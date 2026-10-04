@@ -11,7 +11,7 @@ C/C++ 低階串列通訊驅動，用於 VR 遠端遙操作機械手臂的伺服�
 - **Arm**: SO-ARM101（6-DOF follower + leader）
 - **Servo**: Feetech STS3215，12-bit 磁性編碼器，半雙工 TTL 串列匯流排
   - Leader: 7.4V 版（ST3215, 19.5kg·cm）
-  - Follower: 12V 版（ST-3215-C047, 30kg·cm）— 兩者工作電壓範圍不同，**電源不可互換**
+  - Follower: 12V 版（ST-3215-C018, 30kg·cm）— 兩者工作電壓範圍不同，**電源不可互換**
 - **Protocol**: 半雙工非同步串列，8N1，ID 0–253，鮑率 38400bps–1Mbps（預設 1Mbps）
 
 ## Project status
