@@ -17,6 +17,18 @@ C/C++ 低階串列通訊驅動，用於 VR 遠端遙操作機械手臂的伺服�
 - **Protocol**：半雙工非同步串列，8N1 無校驗，ID 0–253（254 為廣播），鮑率 38400bps–1Mbps（出廠預設 1Mbps）
 - 多位元組數值為 little-endian；位置、速度、負載等有號值採 **sign-magnitude** 編碼，非二補數
 
+## Literature
+
+遙操作的體感延遲由控制迴圈頻率決定，而匯流排讀寫是這個迴圈的瓶頸。兩份來源分別解釋了瓶頸的兩段：
+
+**Bestmann et al. (2019)** — RoboCup 人形機器人，20 顆 Dynamixel 掛同一條半雙工匯流排。提出的週期模型為「傳輸時間 + 馬達數 × 每顆回應延遲」，預測 150 Hz、實測 149 Hz。兩個反直覺的結論：回應延遲不隨鮑率縮短（馬達數多時會成為主導項）；MCU 轉發封包反而比純 USB 轉序列慢。
+
+**FTDI AN232B-04** — USB 轉序列晶片為排程輪詢而非中斷驅動，且需緩衝區滿 62 bytes 或 latency timer 逾時才回傳主機，預設 16 ms。
+
+**套用到本系統**：一個遙操作週期為 SYNC READ + 六個回應包 + SYNC WRITE，共 88 bytes，1 Mbps 下是 0.88 ms。但若回應延遲暫存器 `0x07` 維持出廠預設 500 µs，六顆即佔 3 ms（週期的 77%），頻率掉至 260 Hz；而單次六軸 SYNC READ 僅回 48 bytes，低於 62 bytes 門檻，每次讀取都會撞上 latency timer——預設 16 ms 時頻率上限僅 50–60 Hz。
+
+**缺口**：兩份來源都未測過「MCU 獨立控制、PC 完全不在控制迴圈內」的組態。因此規劃 A/B/C 三組對照（timer 預設 / timer 調最低 / STM32 獨立），W14–16 的移植階段同時是在補這個對照組。
+
 ## Architecture (planned)
 
 對應 LeRobot / Feetech SDK 的分層，移植至 STM32 時只需替換最底層：
@@ -112,6 +124,17 @@ tests/        封包驗證、邊界測試
 | `Servo_Protocol_Manual_MagneticEncoding.pdf` | 通訊協定手冊（磁編碼版） |
 | `Servo_Protocol_Memory_Table_MagneticEncoding.xlsx` | 記憶體表（磁編碼版） |
 
+### literature/
+
+| 文獻 | 與本專題的關聯 |
+|---|---|
+| Bestmann et al. (2019) | 半雙工匯流排的控制週期模型；回應延遲與鮑率無關；MCU 轉發的效能陷阱 |
+| FTDI AN232B-04 | USB 轉序列的輪詢機制與 latency timer，解釋小封包為何被延遲 |
+
+### ppt/
+
+每週進度報告與講稿，非程式碼產出。
+
 ## Simulator
 
 手臂採預約制，模擬器讓非使用時段也能在家開發與回歸測試，並把預約到的時間保留給只有真機能做的事（延遲量測、時序驗證）。它同時也是架構分層的驗證：若 HAL 介面設計得乾淨，換成模擬器應當一行上層程式碼都不必改。
@@ -122,6 +145,7 @@ tests/        封包驗證、邊界測試
 
 - 協定手冊 1.3.9 的 RESET 範例 checksum 印錯（印 `F6`，正確為 `F2`）；其餘範例封包已全數以程式驗算通過
 - 與手冊有出入的實作細節共三處（sign-magnitude 編碼、鮑率對照表、回應延遲暫存器 0x07），均以對照 LeRobot 與原廠 SDK 的結果為準，詳見 `docs/protocol-notes.md` 與 `docs/lerobot-notes.md`
+- 原廠文件稱 STS 系列的 `0x07` 無回應延遲功能，但 LeRobot 的程式碼會寫入此位址，兩方說法不一致，待真機實測
 
 ## Reference
 
