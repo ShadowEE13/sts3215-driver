@@ -1,0 +1,9 @@
+# 原廠文件與論文受著作權保護，只放本地，不上傳
+datasheet/
+literature/
+
+# Build output
+build/
+*.o
+*.exe
+demo

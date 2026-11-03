@@ -95,9 +95,7 @@ Protocol 與 Device 兩層之後要搬上 MCU，因此全程採 MCU 友善寫法
 ## Repo structure
 
 ```
-datasheet/    原廠規格書與協定手冊（唯讀參考）
 docs/         自行整理的技術筆記與規劃
-literature/   已經閱讀過的文獻
 ppt/          每週報告與紀錄
 include/      對外 header（含 HAL 介面定義）
 src/          驅動層原始碼
@@ -110,26 +108,11 @@ tests/        封包驗證、邊界測試
 
 | 檔案 | 內容 |
 |---|---|
-| `protocol-notes.md` | 封包格式、checksum 虛擬碼、指令集、Control Table、逐 byte 拆解範例 |
-| `lerobot-notes.md` | 對照 LeRobot 與 Feetech 官方 SDK 的實作，記錄與手冊的落差與修正 |
-| `sim-spec.md` | 虛擬馬達模擬器的實作規格與驗收條件 |
-| `schedule.md` | 16 週進度規劃、檢查點與風險追蹤 |
-
-### datasheet/
-
-| 檔案 | 說明 |
-|---|---|
-| `FEETECH_ST-3215_7.4V_Datasheet.pdf` | Leader 馬達規格書 |
-| `FEETECH_ST-3215-C018_12V_Datasheet.pdf` | Follower 馬達規格書 |
-| `Servo_Protocol_Manual_MagneticEncoding.pdf` | 通訊協定手冊（磁編碼版） |
-| `Servo_Protocol_Memory_Table_MagneticEncoding.xlsx` | 記憶體表（磁編碼版） |
-
-### literature/
-
-| 文獻 | 與本專題的關聯 |
-|---|---|
-| Bestmann et al. (2019) | 半雙工匯流排的控制週期模型；回應延遲與鮑率無關；MCU 轉發的效能陷阱 |
-| FTDI AN232B-04 | USB 轉序列的輪詢機制與 latency timer，解釋小封包為何被延遲 |
+| [`protocol-notes.md`](docs/protocol-notes.md) | 封包格式、checksum 虛擬碼、指令集、Control Table、逐 byte 拆解範例 |
+| [`LeRobot-notes.md`](docs/LeRobot-notes.md) | 對照 LeRobot 與 Feetech 官方 SDK 的實作，記錄與手冊的落差與修正 |
+| [`sim-spec.md`](docs/sim-spec.md) | 虛擬馬達模擬器的實作規格與驗收條件 |
+| [`schedule.md`](docs/schedule.md) | 16 週進度規劃、檢查點與風險追蹤 |
+| [`lab-log/`](docs/lab-log/) | 每週實驗記錄：發現（F-nn）、待驗證（V-nn）、計畫變更（C-nn） |
 
 ### ppt/
 
@@ -139,18 +122,47 @@ tests/        封包驗證、邊界測試
 
 手臂採預約制，模擬器讓非使用時段也能在家開發與回歸測試，並把預約到的時間保留給只有真機能做的事（延遲量測、時序驗證）。它同時也是架構分層的驗證：若 HAL 介面設計得乾淨，換成模擬器應當一行上層程式碼都不必改。
 
-模擬器可測封包組裝與解析、收包狀態機、逾時與重傳、sign-magnitude 編解碼、Control Table 讀寫語意，並支援故障注入（不回應、強制 error byte、錯誤 checksum、插入雜訊）；真實延遲、半雙工切換時序與馬達韌體實際行為仍須真機驗證。完整對照表見 `docs/sim-spec.md`。
+模擬器可測封包組裝與解析、收包狀態機、逾時與重傳、sign-magnitude 編解碼、Control Table 讀寫語意，並支援故障注入（不回應、強制 error byte、錯誤 checksum、插入雜訊）；真實延遲、半雙工切換時序與馬達韌體實際行為仍須真機驗證。完整對照表見 [`docs/sim-spec.md`](docs/sim-spec.md)。
 
 ## Notes
 
 - 協定手冊 1.3.9 的 RESET 範例 checksum 印錯（印 `F6`，正確為 `F2`）；其餘範例封包已全數以程式驗算通過
-- 與手冊有出入的實作細節共三處（sign-magnitude 編碼、鮑率對照表、回應延遲暫存器 0x07），均以對照 LeRobot 與原廠 SDK 的結果為準，詳見 `docs/protocol-notes.md` 與 `docs/lerobot-notes.md`
+- 與手冊有出入的實作細節共三處（sign-magnitude 編碼、鮑率對照表、回應延遲暫存器 0x07），均以對照 LeRobot 與原廠 SDK 的結果為準，詳見 [`docs/protocol-notes.md`](docs/protocol-notes.md) 與 [`docs/LeRobot-notes.md`](docs/LeRobot-notes.md)
 - 原廠文件稱 STS 系列的 `0x07` 無回應延遲功能，但 LeRobot 的程式碼會寫入此位址，兩方說法不一致，待真機實測
 
 ## Reference
 
+原廠文件與論文受著作權保護，不收錄於本 repo，請依下列來源自行取得。本地可放在 `datasheet/`、`literature/`，兩個資料夾已列入 `.gitignore`。
+
+### 原廠文件
+
+皆可於 [飛特（Feetech）官網](https://www.feetechrc.com/) 下載。
+
+| 文件 | 用途 |
+|---|---|
+| STS3215 規格書（7.4V / 19.5 kg·cm） | Leader 馬達電氣規格 |
+| ST-3215-C018 規格書（12V / 30 kg·cm） | Follower 馬達電氣規格 |
+| Servo Protocol Manual（磁編碼版） | 封包格式、指令集 |
+| Servo Protocol Memory Table（磁編碼版） | Control Table 暫存器表 |
+
+### 程式碼
+
 - [LeRobot](https://github.com/huggingface/lerobot) — 作初期熟悉、交叉驗證與團隊整合保底之用
 - [FTServo_Python](https://github.com/ftservo/FTServo_Python) — Feetech 官方 Python SDK
+
+### 文獻
+
+**串列匯流排通訊與延遲**（直接影響驅動設計，見上方 Literature 一節）
+
+- M. Bestmann, J. Güldenstein, and J. Zhang, "High-Frequency Multi Bus Servo and Sensor Communication Using the Dynamixel Protocol," in *RoboCup 2019: Robot World Cup XXIII*, LNCS vol. 11531, pp. 16–29, Springer, 2019. [[PDF]](https://robocup.informatik.uni-hamburg.de/wp-content/uploads/2019/06/dxl_paper-4.pdf)
+- FTDI, "AN232B-04: Data Throughput, Latency & Handshaking," Application Note, v1.1, 2006. [[FTDI Application Notes]](https://ftdichip.com/document/application-notes/)
+
+**遙操作系統**
+
+- P. F. Hokayem and M. W. Spong, "Bilateral teleoperation: An historical survey," *Automatica*, 2006. [[DOI]](https://doi.org/10.1016/j.automatica.2006.06.027)
+- T. Z. Zhao, V. Kumar, S. Levine, and C. Finn, "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware," in *Robotics: Science and Systems (RSS)*, 2023. [[arXiv]](https://arxiv.org/abs/2304.13705)
+- P. Wu, Y. Shentu, Z. Yi, X. Lin, and P. Abbeel, "GELLO: A General, Low-Cost, and Intuitive Teleoperation Framework for Robot Manipulators," arXiv:2309.13037, 2023. [[arXiv]](https://arxiv.org/abs/2309.13037)
+- F. P. Audonnet, J. Grizou, A. Hamilton, and G. Aragon-Camarasa, "TELESIM: A Modular and Plug-and-Play Framework for Robotic Arm Teleoperation using a Digital Twin," arXiv:2309.10579, 2023. [[arXiv]](https://arxiv.org/abs/2309.10579)
 
 ## License
 
