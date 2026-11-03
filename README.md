@@ -40,7 +40,7 @@ Protocol      封包組裝/解析、checksum、逾時與重傳
 HAL           序列埠抽象（PC: termios/Win32 → STM32: UART + DMA → sim: 虛擬馬達）
 ```
 
-`HAL` 以一組函式指標 `hal_ops_t`（`write` / `read` / `flush_rx` / `millis` + `void *ctx`）定義，PC、STM32 與模擬器各自實作同一組介面，上層三層完全不感知底下接的是什麼。
+`HAL` 以一張函式表 `hal_ops_t`（`write` / `read` / `flush_rx` / `millis`，第一個參數皆為 `void *ctx`）定義，宣告成 `static const`；一條 bus 的實例為 `sts_hal_t`（函式表指標 + `ctx`），leader 與 follower 共用同一張表。PC、STM32 與模擬器各自實作同一組介面，上層三層完全不感知底下接的是什麼。
 
 ### 上層介面與後端切換
 

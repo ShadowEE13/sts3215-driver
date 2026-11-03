@@ -39,7 +39,7 @@
 
 ### 步驟 1：`include/sts_hal.h`（約 1–2 小時，多數時間在設計）
 
-先決定以下四項，並把答案寫進 header 註解：
+以下四項已決定，答案寫進 header 註解（另有第五項「函式表與實例分開」，見第七節）：
 
 | 設計問題 | 決定 | 理由 |
 |---|---|---|
@@ -52,30 +52,30 @@
 
 ### 步驟 2：`sim/servo_sim`：Control Table + 指令處理（約 3 小時）
 
-- [ ] 每顆馬達一個 128-byte 陣列，每個位址標註屬性（唯讀 / EPROM / SRAM），WRITE 依屬性決定是否接受
-- [ ] EPROM 寫入檢查 Lock（0x37）
-- [ ] 支援 PING / READ / WRITE；廣播 ID 0xFE 僅 PING 回應
-- [ ] Model Number（0x03，2 bytes）回 777
-- [ ] **模擬器的 parser 不與驅動共用程式碼**：刻意寫得簡單直白，共用就失去互相驗證的意義
-- [ ] 測試鉤子 `sim_poke(id, addr, value)`：直接設定暫存器。驗收會用到，例如範例 4.2 的回應位置是 1304，須先將 0x38 設為 1304，模擬器才回得出 `18 05 DD`
+- [x] 每顆馬達一個 128-byte 陣列，每個位址標註屬性（唯讀 / EPROM / SRAM），WRITE 依屬性決定是否接受
+- [x] EPROM 寫入檢查 Lock（0x37）
+- [x] 支援 PING / READ / WRITE；廣播 ID 0xFE 僅 PING 回應
+- [x] Model Number（0x03，2 bytes）回 777
+- [x] **模擬器的 parser 不與驅動共用程式碼**：刻意寫得簡單直白，共用就失去互相驗證的意義
+- [x] 測試鉤子 `sim_poke(id, addr, value)`：直接設定暫存器。驗收會用到，例如範例 4.2 的回應位置是 1304，須先將 0x38 設為 1304，模擬器才回得出 `18 05 DD`
 
 ### 步驟 3：`sim/hal_sim`（約 1 小時）
 
-- [ ] `write`：將 bytes 交給 servo_sim，回應放進 RX 佇列
-- [ ] `read`：從 RX 佇列取資料
-- [ ] **虛擬時鐘**：`millis()` 回傳模擬時間，不使用真實時間
+- [x] `write`：將 bytes 交給 servo_sim，回應放進 RX 佇列
+- [x] `read`：從 RX 佇列取資料
+- [x] **虛擬時鐘**：`millis()` 回傳模擬時間，不使用真實時間
 
 > ⚠️ 陷阱：馬達不回應時，Protocol 層會在 `while (!逾時) read()` 中空轉；若虛擬時鐘不前進，就是無窮迴圈。
 > 做法：每次 `read` 讀不到資料時，虛擬時間前進 1 ms。逾時測試因此是確定性的，且瞬間跑完。
 
 ### 步驟 4：運動模型最小版（約 1 小時）
 
-- [ ] 每個 tick 依 Goal_Velocity（0x2E）朝 Goal_Position（0x2A）前進
-- [ ] 受 Min/Max_Position_Limit（0x09 / 0x0B）限制
-- [ ] Torque_Enable（0x28）為 0 時不動
-- [ ] 同步更新 Present_Position（0x38）、Present_Speed（0x3A）、Moving（0x42）
-- [ ] tick 綁定在虛擬時鐘上
-- [ ] 規格未定義的行為（例：扭矩關閉時寫入目標位置，真機是否自動開扭矩？）→ 先選一種實作，並列入 `sim/README.md` 的「待真機驗證」清單，不默默決定
+- [x] 每個 tick 依 Goal_Velocity（0x2E）朝 Goal_Position（0x2A）前進
+- [x] 受 Min/Max_Position_Limit（0x09 / 0x0B）限制
+- [x] Torque_Enable（0x28）為 0 時不動
+- [x] 同步更新 Present_Position（0x38）、Present_Speed（0x3A）、Moving（0x42）
+- [x] tick 綁定在虛擬時鐘上
+- [x] 規格未定義的行為（例：扭矩關閉時寫入目標位置，真機是否自動開扭矩？）→ 先選一種實作，並列入 `sim/README.md` 的「待真機驗證」清單，不默默決定
 
 ### ✅ 驗收 A：模擬器 vs 手冊
 
@@ -93,9 +93,9 @@
 
 ### 步驟 5：純函式 + 單元測試（約 2 小時）
 
-- [ ] `checksum`、`build_packet`
-- [ ] `sm_encode` / `sm_decode`（sign-magnitude，見 `lerobot-notes.md` 4.1）
-- [ ] little-endian 組合 / 拆解
+- [x] `checksum`、`build_packet`
+- [x] `sm_encode` / `sm_decode`（sign-magnitude，見 `lerobot-notes.md` 4.1）
+- [x] little-endian 組合 / 拆解
 
 測資：
 
@@ -188,13 +188,19 @@ A、B、C 以手冊為外部參照；D 只證明兩邊彼此同意。例如兩�
 
 ## 七、分工
 
-| 項目 | 負責 | 說明 |
-|---|---|---|
-| `include/sts_hal.h` | 自己寫，Claude review | 兩邊共同依賴，須最先定案 |
-| `sim/`（servo_sim、hal_sim、demo、README、故障注入） | Claude 依 `sim-spec.md` 實作 | 與驅動不同作者，可再降低「同源」風險 |
-| `src/` Protocol 層（含逾時、重傳、錯誤碼、SYNC） | 自己寫 | 專題本體 |
+**11/04 調整**：程式碼全部交由 Claude Code（在本機 repo 中執行）撰寫；本人負責理解、設計決策與 commit；另一個 Claude 對話負責 review 與解釋。規則寫在 repo 根目錄的 `CLAUDE.md`。之後有時間再自行重寫核心部分（優先：收包狀態機）。
 
-**順序**：`sts_hal.h` 定案 → 模擬器與 Protocol 層並行。
+| 角色 | 負責 |
+|---|---|
+| Claude Code（本機） | 所有程式碼與測試，一次一個步驟 |
+| 本人 | 理解每一步、必要決策、commit / push、meeting 報告 |
+| Claude 對話 | 每步 review、解釋、確認理解的問題、決策紀錄 |
+
+**每步流程**：Claude Code 完成一步 → `make test` + `make layers` 通過 → 本人 review 並 commit（`step N: ...`）→ 回到 Claude 對話 review 與解釋 → 下一步。
+
+**同源風險升高**：模擬器與驅動現在出自同一個模型，原本「不同作者」的保險消失。因此驗收 A/B/C 成為唯一的外部防線，不可省略；`sim/` 與 `src/` 不共用任何程式碼，驗收封包一律逐 byte 照抄手冊範例。
+
+**HAL 設計決策（11/04 定案）**：函式表與實例分開（`hal_ops_t` 為 `const` 函式表，`sts_hal_t` = `ops` + `ctx`）；`write`/`read` 回傳 `int`、長度用 `size_t`。完整理由見 `CLAUDE.md`。
 
 ---
 

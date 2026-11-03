@@ -44,7 +44,7 @@ hal_pc.c    hal_sim.c
  真實手臂    servo_sim.c
 ```
 
-`hal_ops_t` 是一組函式指標：`write` / `read` / `flush_rx` / `millis`，外加一個 `void *ctx`。PC 版、STM32 版、模擬器版各自實作同一組。
+`hal_ops_t` 是一組函式指標：`write` / `read` / `flush_rx` / `millis`，每個函式的第一個參數都是 `void *ctx`。函式表宣告成 `static const`，與實例分開：`sts_hal_t` = `ops` 指標 + `ctx`，代表一條 bus（11/04 定案，理由見 `include/sts_hal.h` 註解）。PC 版、STM32 版、模擬器版各自實作同一組。
 
 ## 5. 檔案
 
