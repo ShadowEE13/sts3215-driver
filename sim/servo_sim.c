@@ -75,8 +75,9 @@ static void put16(sim_servo_t *s, uint8_t addr, uint16_t v)
 /* sign-magnitude（不是二補數）：sign_bit 為方向位，以下為絕對值 */
 static int32_t sm_to_int(uint16_t raw, unsigned sign_bit)
 {
-    int32_t mag = (int32_t)(raw & ((1u << sign_bit) - 1u));
-    return ((raw >> sign_bit) & 1u) ? -mag : mag;
+    unsigned u = raw;    /* 先轉 unsigned：uint16_t 運算時會被提升成 int，跟 1u 混用會觸發 -Wsign-conversion */
+    int32_t mag = (int32_t)(u & ((1u << sign_bit) - 1u));
+    return ((u >> sign_bit) & 1u) ? -mag : mag;
 }
 
 static uint16_t int_to_sm(int32_t v, unsigned sign_bit)
