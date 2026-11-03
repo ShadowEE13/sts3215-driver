@@ -7,10 +7,17 @@
  *
  * 用法：
  *
- *     static const hal_ops_t uart_ops = { uart_write, uart_read, uart_flush_rx, uart_millis };
- *     sts_hal_t leader   = { &uart_ops, &leader_port };    // 同一張函式表
- *     sts_hal_t follower = { &uart_ops, &follower_port };  // 不同的 ctx
+ *     static const hal_ops_t uart_ops = {
+ *         .write    = uart_write,
+ *         .read     = uart_read,
+ *         .flush_rx = uart_flush_rx,
+ *         .millis   = uart_millis,
+ *     };
+ *     sts_hal_t leader   = { .ops = &uart_ops, .ctx = &leader_port };    // 同一張函式表
+ *     sts_hal_t follower = { .ops = &uart_ops, .ctx = &follower_port };  // 不同的 ctx
  *     hal_write(&leader, pkt, len);
+ *
+ *   用 designated initializer（.write = ...）指名欄位：欄位順序以後調整也不會接錯。
  *
  * 設計決定（改之前先想清楚會不會動到 Protocol 層；完整紀錄見 CLAUDE.md）：
  *
@@ -84,7 +91,10 @@ typedef struct hal_ops {
      * 單調遞增的毫秒計數，起點不重要，溢位後從 0 繼續（決定 3）。
      * 模擬器回傳虛擬時間，所以上層的等待迴圈每一圈都要呼叫 read 與 millis，
      * 不可用其他方式空等，否則虛擬時鐘不會前進。
-     * TODO(W12)：延遲量測需要 µs 解析度——在這裡加 micros，還是只在量測程式用 OS 計時器？
+     *
+     * 已決定（11/04）：HAL 不提供 micros。毫秒對逾時判斷已經夠用；W12 的延遲量測
+     * 需要 µs 解析度，在應用層的量測程式裡用 QueryPerformanceCounter 計時，
+     * 不經過 HAL，也就不必要求 STM32 與模擬器實作它。
      */
     uint32_t (*millis)(void *ctx);
 } hal_ops_t;
