@@ -18,7 +18,7 @@
 
 static sim_bus_t bus;
 static hal_sim_t hs;
-static hal_ops_t hal;
+static sts_hal_t hal;
 
 /* 重建一條 bus，掛上 ID 1..n 的預設馬達 */
 static void reset_bus(uint8_t n)
@@ -26,7 +26,7 @@ static void reset_bus(uint8_t n)
     sim_init(&bus);
     for (uint8_t id = 1; id <= n; id++) sim_add_servo(&bus, id);
     hal_sim_init(&hs, &bus);
-    hal = hal_sim_ops(&hs);
+    hal = (sts_hal_t){ &hal_sim_ops, &hs };
 }
 
 static void dump(const char *tag, const uint8_t *b, size_t n)
@@ -61,17 +61,17 @@ static size_t pkt(uint8_t *out, uint8_t id, uint8_t code, const uint8_t *p, size
 /* flush → write → 讀到 want 個 byte、或 50 ms 沒有新資料為止 */
 static size_t transact(const uint8_t *tx, size_t txlen, uint8_t *rx, size_t cap, size_t want)
 {
-    hal.flush_rx(hal.ctx);
-    hal.write(hal.ctx, tx, txlen);
+    hal_flush_rx(&hal);
+    hal_write(&hal, tx, txlen);
     dump("->", tx, txlen);
 
     size_t n = 0;
-    uint32_t last = hal.millis(hal.ctx);
-    while (n < want && !hal_timed_out(last, hal.millis(hal.ctx), 50)) {
-        int r = hal.read(hal.ctx, rx + n, cap - n);
+    uint32_t last = hal_millis(&hal);
+    while (n < want && !hal_timed_out(last, hal_millis(&hal), 50)) {
+        int r = hal_read(&hal, rx + n, cap - n);
         if (r > 0) {
             n += (size_t)r;
-            last = hal.millis(hal.ctx);
+            last = hal_millis(&hal);
         }
     }
     dump("<-", rx, n);
@@ -302,36 +302,36 @@ static void faults(void)
     expect_reply(tx, 6, NULL, 0);
 
     puts("  -- instruction split across two writes: reassembled");
-    hal.write(hal.ctx, ping1, 3);
+    hal_write(&hal, ping1, 3);
     CHECK_EQ(hs.rx_len, 0);
-    hal.write(hal.ctx, ping1 + 3, 3);
-    r = hal.read(hal.ctx, buf, sizeof buf);
+    hal_write(&hal, ping1 + 3, 3);
+    r = hal_read(&hal, buf, sizeof buf);
     CHECK_EQ(r, 6);
     CHECK_BYTES(buf, ack1, 6);
 
     puts("  -- rx_chunk = 1: one byte per read");
     hs.rx_chunk = 1;
-    hal.write(hal.ctx, ping1, 6);
-    CHECK_EQ(hal.read(hal.ctx, buf, sizeof buf), 1);
-    CHECK_EQ(hal.read(hal.ctx, buf, sizeof buf), 1);
+    hal_write(&hal, ping1, 6);
+    CHECK_EQ(hal_read(&hal, buf, sizeof buf), 1);
+    CHECK_EQ(hal_read(&hal, buf, sizeof buf), 1);
     hs.rx_chunk = 0;
-    CHECK_EQ(hal.read(hal.ctx, buf, sizeof buf), 4);
+    CHECK_EQ(hal_read(&hal, buf, sizeof buf), 4);
 
     puts("  -- latency_ms = 5: reply readable exactly 5 ms after write");
     hs.latency_ms = 5;
-    hal.write(hal.ctx, ping1, 6);
-    uint32_t t0 = hal.millis(hal.ctx);
-    while ((r = hal.read(hal.ctx, buf, sizeof buf)) == 0 && !hal_timed_out(t0, hal.millis(hal.ctx), 100)) {}
+    hal_write(&hal, ping1, 6);
+    uint32_t t0 = hal_millis(&hal);
+    while ((r = hal_read(&hal, buf, sizeof buf)) == 0 && !hal_timed_out(t0, hal_millis(&hal), 100)) {}
     CHECK_EQ(r, 6);
-    CHECK_EQ(hal.millis(hal.ctx) - t0, 5);
+    CHECK_EQ(hal_millis(&hal) - t0, 5);
 
     puts("  -- late reply survives flush: arrives ahead of the next transaction's reply");
     hs.latency_ms = 20;
-    hal.flush_rx(hal.ctx);
-    hal.write(hal.ctx, ping1, 6);           /* 20 ms 後才到 */
+    hal_flush_rx(&hal);
+    hal_write(&hal, ping1, 6);           /* 20 ms 後才到 */
     hal_sim_advance(&hs, 10);               /* 驅動等 10 ms 就放棄 */
     hs.latency_ms = 0;
-    hal.flush_rx(hal.ctx);                  /* 舊回應還在路上，清不掉 */
+    hal_flush_rx(&hal);                  /* 舊回應還在路上，清不掉 */
     elen = transact(ping2, 6, exp, sizeof exp, 12);
     CHECK_EQ(elen, 12);
     CHECK_BYTES(exp, ack1, 6);              /* 先到的是 ID 1 的舊回應 */

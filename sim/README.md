@@ -1,6 +1,6 @@
 # sim/ — 虛擬 STS3215
 
-手臂採預約制，模擬器讓非預約時段也能開發與回歸測試。它同時驗證 HAL 分層：Protocol 層透過 `hal_ops_t` 跟模擬器講話，換成真機時一行都不必改。規格見 [`docs/sim-spec.md`](../docs/sim-spec.md)。
+手臂採預約制，模擬器讓非預約時段也能開發與回歸測試。它同時驗證 HAL 分層：Protocol 層透過 `sts_hal_t` 跟模擬器講話，換成真機時一行都不必改。規格見 [`docs/sim-spec.md`](../docs/sim-spec.md)。
 
 | 檔案 | 內容 |
 |---|---|
@@ -21,7 +21,7 @@ hal_sim_t hs;
 sim_init(&bus);
 for (uint8_t id = 1; id <= 6; id++) sim_add_servo(&bus, id);
 hal_sim_init(&hs, &bus);
-hal_ops_t hal = hal_sim_ops(&hs);          // 交給 Protocol 層
+sts_hal_t hal = { &hal_sim_ops, &hs };     // 交給 Protocol 層
 
 sim_poke(&bus, 1, SIM_ADDR_PRESENT_POS, 1304);   // 直接設定暫存器
 hal_sim_advance(&hs, 500);                       // 虛擬時間前進 500 ms，馬達跟著動

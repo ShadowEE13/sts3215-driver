@@ -51,7 +51,7 @@ static int hs_write(void *ctx, const uint8_t *buf, size_t len)
 
     size_t n = sim_receive(hs->bus, buf, len, resp, sizeof resp);
     rx_push(hs, resp, n, hs->now_ms + hs->latency_ms);
-    return 0;
+    return (int)len;
 }
 
 static int hs_read(void *ctx, uint8_t *buf, size_t cap)
@@ -88,17 +88,12 @@ void hal_sim_init(hal_sim_t *hs, sim_bus_t *bus)
     hs->bus = bus;
 }
 
-hal_ops_t hal_sim_ops(hal_sim_t *hs)
-{
-    hal_ops_t ops = {
-        .write    = hs_write,
-        .read     = hs_read,
-        .flush_rx = hs_flush_rx,
-        .millis   = hs_millis,
-        .ctx      = hs,
-    };
-    return ops;
-}
+const hal_ops_t hal_sim_ops = {
+    .write    = hs_write,
+    .read     = hs_read,
+    .flush_rx = hs_flush_rx,
+    .millis   = hs_millis,
+};
 
 void hal_sim_advance(hal_sim_t *hs, uint32_t ms)
 {

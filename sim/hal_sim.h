@@ -3,7 +3,7 @@
  *
  *   sim_bus_t bus;   sim_init(&bus);   sim_add_servo(&bus, 1);
  *   hal_sim_t hs;    hal_sim_init(&hs, &bus);
- *   hal_ops_t hal = hal_sim_ops(&hs);      // 交給 Protocol 層
+ *   sts_hal_t hal = { &hal_sim_ops, &hs }; // 交給 Protocol 層
  *
  * 虛擬時鐘：millis() 回傳 now_ms，不碰真實時間。
  *   - read 讀不到資料時前進 1 ms（否則「馬達不回應」時 Protocol 層的
@@ -46,8 +46,10 @@ typedef struct {
     size_t   rx_len;
 } hal_sim_t;
 
-void      hal_sim_init(hal_sim_t *hs, sim_bus_t *bus);
-hal_ops_t hal_sim_ops(hal_sim_t *hs);
+void hal_sim_init(hal_sim_t *hs, sim_bus_t *bus);
+
+/* 模擬器的函式表；sts_hal_t 的 ctx 請傳 hal_sim_t * */
+extern const hal_ops_t hal_sim_ops;
 
 /* 虛擬時間前進 ms 毫秒，運動模型同步 tick */
 void hal_sim_advance(hal_sim_t *hs, uint32_t ms);
