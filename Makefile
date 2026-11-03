@@ -16,6 +16,10 @@ endif
 
 BUILD := build
 
+# Windows（MSYS2 / MinGW）的 gcc 會自動在輸出檔名補上 .exe。
+# 目標名稱要跟著加，否則 make 找不到自己的產出，每次都重新編譯。
+EXE := $(if $(filter Windows_NT,$(OS)),.exe)
+
 # 驅動本體（Protocol / Device / HAL 實作）
 SRC := $(wildcard src/*.c)
 # 模擬器（不含 demo.c，demo 自己有 main）
@@ -24,8 +28,8 @@ SIM := $(filter-out sim/demo.c,$(wildcard sim/*.c))
 HDRS := $(wildcard include/*.h sim/*.h tests/*.h)
 
 # 每個 tests/test_xxx.c 各自編成一支 build/test_xxx
-TESTS := $(patsubst tests/%.c,$(BUILD)/%,$(wildcard tests/test_*.c))
-DEMO  := $(if $(wildcard sim/demo.c),$(BUILD)/demo)
+TESTS := $(patsubst tests/%.c,$(BUILD)/%$(EXE),$(wildcard tests/test_*.c))
+DEMO  := $(if $(wildcard sim/demo.c),$(BUILD)/demo$(EXE))
 
 .PHONY: all test demo layers clean
 
@@ -35,11 +39,11 @@ $(BUILD):
 	mkdir -p $@
 
 # 測試 = 測試檔 + 驅動 + 模擬器
-$(BUILD)/test_%: tests/test_%.c $(SRC) $(SIM) $(HDRS) | $(BUILD)
+$(BUILD)/test_%$(EXE): tests/test_%.c $(SRC) $(SIM) $(HDRS) | $(BUILD)
 	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
 
 # demo 只連模擬器，不連驅動：驗收 A 必須獨立於驅動
-$(BUILD)/demo: sim/demo.c $(SIM) $(HDRS) | $(BUILD)
+$(BUILD)/demo$(EXE): sim/demo.c $(SIM) $(HDRS) | $(BUILD)
 	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
 
 test: $(TESTS)
