@@ -1,7 +1,7 @@
 # sts3215-driver
 #
 #   make            編譯所有測試與 demo
-#   make test       編譯並執行 tests/test_*.c，任一失敗就停
+#   make test       編譯並執行 tests/test_*.c 與 sim/demo.c（驗收 A），任一失敗就停
 #   make demo       編譯並執行 sim/demo.c（模擬器自我驗證，不經過驅動）
 #   make layers     分層檢查：src/ 不得引用 sim/ 或 OS 專屬 API
 #   make SAN=1 ...  加上 AddressSanitizer + UBSan（抓越界、未定義行為）
@@ -46,8 +46,15 @@ $(BUILD)/test_%$(EXE): tests/test_%.c $(SRC) $(SIM) $(HDRS) | $(BUILD)
 $(BUILD)/demo$(EXE): sim/demo.c $(SIM) $(HDRS) | $(BUILD)
 	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
 
-test: $(TESTS)
+# demo（驗收 A）也一起跑，改到模擬器時才不會漏掉；輸出很長，平常只印最後的統計，
+# 失敗時才印全部（完整輸出用 make demo 看）
+test: $(TESTS) $(DEMO)
 	@for t in $(TESTS); do echo "== $$t"; ./$$t || exit 1; done
+	@if [ -n "$(DEMO)" ]; then \
+	    echo "== $(DEMO)（驗收 A + 模擬器自我檢查）"; \
+	    ./$(DEMO) > $(BUILD)/demo.log || { cat $(BUILD)/demo.log; exit 1; }; \
+	    tail -n 1 $(BUILD)/demo.log; \
+	fi
 	@echo "== all tests passed"
 
 demo: $(DEMO)

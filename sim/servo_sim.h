@@ -24,11 +24,15 @@ extern "C" {
 #define SIM_MAX_SERVOS   8
 #define SIM_TABLE_SIZE   128
 #define SIM_BROADCAST_ID 0xFE
-#define SIM_MAX_SPEED    3000   /* 步/s；Goal_Velocity 為 0 或超過時用這個（待真機驗證） */
+#define SIM_MAX_SPEED    3000   /* 步/s；Goal_Velocity 超過、或為 0 且 Phase BIT3 = 1 時用這個（待真機驗證） */
+#define SIM_EPROM_END    0x28   /* 0x00–0x27 是 EPROM 區，0x28 起是 SRAM 區 */
 #define SIM_IN_CAP       512    /* 收包緩衝，須 ≥ 最長封包 4 + 255 */
 #define SIM_NOISE_MAX    32
 
-/* 模擬器有用到的 Control Table 位址（完整表見 docs/protocol-notes.md 第 5 節） */
+/*
+ * 模擬器有用到的 Control Table 位址
+ * （完整表見 docs/protocol-notes.md 第 5 節；與原廠表的核對見 docs/memory-table-check.md）
+ */
 enum {
     SIM_ADDR_MODEL        = 0x03,   /* 2 bytes，唯讀，777 */
     SIM_ADDR_ID           = 0x05,
@@ -37,15 +41,26 @@ enum {
     SIM_ADDR_STATUS_LEVEL = 0x08,   /* 0 = 只回 PING / READ，1 = 全部都回 */
     SIM_ADDR_MIN_LIMIT    = 0x09,   /* 2 bytes */
     SIM_ADDR_MAX_LIMIT    = 0x0B,   /* 2 bytes */
-    SIM_ADDR_MAX_TORQUE   = 0x10,   /* 2 bytes */
+    SIM_ADDR_MAX_TEMP     = 0x0D,
+    SIM_ADDR_MAX_TORQUE   = 0x10,   /* 2 bytes，上電時複製到 0x30 */
+    SIM_ADDR_PHASE        = 0x12,   /* bitmask，見 SIM_PHASE_* */
+    SIM_ADDR_UNLOAD_COND  = 0x13,   /* 卸載條件 bitmask */
+    SIM_ADDR_LED_ALARM    = 0x14,   /* LED 報警條件 bitmask */
+    SIM_ADDR_CW_DEADZONE  = 0x1A,
+    SIM_ADDR_CCW_DEADZONE = 0x1B,
+    SIM_ADDR_RESOLUTION   = 0x1E,
     SIM_ADDR_OFFSET       = 0x1F,   /* 2 bytes，Homing Offset，sign BIT11（不模擬） */
+    SIM_ADDR_PROT_TORQUE  = 0x22,
+    SIM_ADDR_PROT_TIME    = 0x23,
+    SIM_ADDR_OVLD_TORQUE  = 0x24,
+    SIM_ADDR_OC_TIME      = 0x26,
     SIM_ADDR_TORQUE       = 0x28,
     SIM_ADDR_ACCEL        = 0x29,
     SIM_ADDR_GOAL_POS     = 0x2A,   /* 2 bytes，sign BIT15 */
     SIM_ADDR_GOAL_TIME    = 0x2C,   /* 2 bytes */
     SIM_ADDR_GOAL_SPEED   = 0x2E,   /* 2 bytes，sign BIT15 */
     SIM_ADDR_TORQUE_LIMIT = 0x30,   /* 2 bytes */
-    SIM_ADDR_LOCK         = 0x37,   /* 0 = EPROM 可寫 */
+    SIM_ADDR_LOCK         = 0x37,   /* 0 = 寫 EPROM 掉電保存；1 = 寫入立即生效、掉電不保存（F-15） */
     SIM_ADDR_PRESENT_POS  = 0x38,   /* 2 bytes，唯讀，sign BIT15 */
     SIM_ADDR_PRESENT_SPD  = 0x3A,   /* 2 bytes，唯讀，sign BIT15 */
     SIM_ADDR_PRESENT_LOAD = 0x3C,   /* 2 bytes，唯讀，sign BIT10 */
@@ -55,6 +70,9 @@ enum {
     SIM_ADDR_MOVING       = 0x42,   /* 唯讀 */
     SIM_ADDR_CURRENT      = 0x45,   /* 2 bytes，唯讀 */
 };
+
+/* Phase（0x12）的 bit：1 = Goal_Velocity 為 0 時以最高速移動；0 = 速度 0 就停止（F-17） */
+#define SIM_PHASE_SPEED0_MAX 0x08
 
 /*
  * 故障注入，直接改欄位即可，例：sim_find(&bus, 3)->fault.drop_next = 1;
@@ -70,6 +88,7 @@ typedef struct {
 typedef struct {
     bool        present;                 /* 這個欄位有沒有掛馬達 */
     uint8_t     table[SIM_TABLE_SIZE];   /* Control Table，ID 也存在這裡（0x05） */
+    uint8_t     eprom[SIM_EPROM_END];    /* 存在 flash 裡的 EPROM 區：斷電重開時還原成這份 */
     uint32_t    frac;                    /* 運動模型：未滿一步的累積量，單位 1/1000 步 */
     sim_fault_t fault;
 } sim_servo_t;
@@ -98,6 +117,16 @@ sim_servo_t *sim_add_servo(sim_bus_t *bus, uint8_t id);
 sim_servo_t *sim_find(sim_bus_t *bus, uint8_t id);
 
 /*
+ * 測試鉤子：模擬這顆馬達斷電再上電。
+ *   - EPROM 區還原成 flash 裡保存的值（Lock = 1 時寫入的會消失）
+ *   - SRAM 區回到上電預設值：扭矩關、Lock = 0、0x30 由 0x10 複製
+ *   - 當前位置保留（編碼器量的是實際角度），目標位置設成當前位置
+ *   - 故障注入設定不受影響（那是測試環境，不是馬達的狀態）
+ * 找不到 id 時不做事。
+ */
+void sim_power_cycle(sim_bus_t *bus, uint8_t id);
+
+/*
  * 指令方向：把 in[0..len) 送上 bus，回應寫進 out，回傳寫了幾 byte。
  * 不完整的封包留在內部緩衝等下一次；checksum 錯的封包靜靜丟掉（同真機）。
  * out 不夠放時截斷。
@@ -111,6 +140,7 @@ void sim_tick(sim_bus_t *bus, uint32_t dt_ms);
 /*
  * 測試鉤子：不經過協定、不看讀寫屬性，直接讀寫暫存器。
  * 2-byte 暫存器（見上方 enum）一次讀寫兩個 byte，little-endian；其餘 1 byte。
+ * poke 到 EPROM 區時連 flash 映像一起改，當成「出廠就是這個值」，power cycle 後仍保留。
  * 找不到 id 時 poke 不做事、peek 回 0。
  */
 void     sim_poke(sim_bus_t *bus, uint8_t id, uint8_t addr, uint16_t value);

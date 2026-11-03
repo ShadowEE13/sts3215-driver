@@ -21,20 +21,31 @@ enum {
  * Control Table
  * ------------------------------------------------------------------------- */
 
-typedef enum { ATTR_RO, ATTR_EPROM, ATTR_SRAM } attr_t;
+typedef enum {
+    ATTR_RO,      /* 唯讀 */
+    ATTR_EPROM,   /* 可寫；Lock = 0 時同時存進 flash */
+    ATTR_SRAM,    /* 可寫，斷電消失 */
+    ATTR_NONE,    /* 原廠表「無定義、權限無」：寫入忽略 */
+} attr_t;
 
 /*
- * 讀寫屬性依位址區段決定（protocol-notes 第 5 節）：
+ * 每個位址的讀寫屬性，已與原廠記憶體表逐段核對（docs/memory-table-check.md 第一節）：
  *   0x00–0x04  版本 / 型號          唯讀
- *   0x05–0x27  EPROM               Lock(0x37) 為 0 才能寫
- *   0x28–0x37  SRAM 控制區          可寫
- *   0x38–      回授區與未公開區      唯讀
+ *   0x05–0x27  EPROM               可寫
+ *   0x28–0x31  SRAM 控制區          可寫（0x31 原廠表寫「無定義」，但它是 0x30 轉矩限制的
+ *                                  高位元組，F-16，維持可寫）
+ *   0x32–0x36  無定義               權限「無」，寫入忽略
+ *   0x37       Lock                可寫
+ *   0x38–0x46  回授區               唯讀（0x46 是 0x45 當前電流的高位元組）
+ *   0x47–      原廠表未列            唯讀（LeRobot 會寫 0x50–0x55，待真機確認 V-15）
  */
 static attr_t attr_of(size_t addr)
 {
     if (addr <= 0x04) return ATTR_RO;
     if (addr <= 0x27) return ATTR_EPROM;
-    if (addr <= 0x37) return ATTR_SRAM;
+    if (addr <= 0x31) return ATTR_SRAM;
+    if (addr <= 0x36) return ATTR_NONE;
+    if (addr == 0x37) return ATTR_SRAM;
     return ATTR_RO;
 }
 
@@ -86,14 +97,21 @@ static uint16_t int_to_sm(int32_t v, unsigned sign_bit)
     return (uint16_t)(v < 0 ? (mag | (1u << sign_bit)) : mag);
 }
 
-/* 依屬性逐 byte 寫入；不能寫的 byte 靜靜跳過（應答照常，見 README） */
+/*
+ * 依屬性逐 byte 寫入；不能寫的 byte 靜靜跳過（應答照常，見 README）。
+ * Lock（0x37）決定的是「EPROM 的值要不要存進 flash」，不是「能不能寫」（F-15）：
+ *   Lock = 0  立即生效，並存進 flash，斷電後保留
+ *   Lock = 1  立即生效，但不存，斷電後恢復成 flash 裡的舊值
+ */
 static void write_table(sim_servo_t *s, size_t addr, const uint8_t *data, size_t n)
 {
     for (size_t i = 0; i < n && addr + i < SIM_TABLE_SIZE; i++) {
-        attr_t at = attr_of(addr + i);
-        if (at == ATTR_RO) continue;
-        if (at == ATTR_EPROM && s->table[SIM_ADDR_LOCK] != 0) continue;
-        s->table[addr + i] = data[i];
+        size_t a = addr + i;
+        attr_t at = attr_of(a);
+        if (at == ATTR_RO || at == ATTR_NONE) continue;
+
+        s->table[a] = data[i];
+        if (at == ATTR_EPROM && s->table[SIM_ADDR_LOCK] == 0) s->eprom[a] = data[i];
     }
 }
 
@@ -307,7 +325,15 @@ static void step(sim_servo_t *s, uint32_t dt_ms)
     }
 
     uint32_t speed = get16(s, SIM_ADDR_GOAL_SPEED) & 0x7FFFu;   /* 位置模式只看大小 */
-    if (speed == 0 || speed > SIM_MAX_SPEED) speed = SIM_MAX_SPEED;
+    if (speed == 0) {
+        /* 速度 0 的意義由 Phase BIT3 決定（F-17）：0 = 停止，1 = 最高速 */
+        if (!(s->table[SIM_ADDR_PHASE] & SIM_PHASE_SPEED0_MAX)) {
+            halt(s);
+            return;
+        }
+        speed = SIM_MAX_SPEED;
+    }
+    if (speed > SIM_MAX_SPEED) speed = SIM_MAX_SPEED;
 
     uint64_t travel = s->frac + (uint64_t)speed * dt_ms;        /* 單位 1/1000 步 */
     uint32_t dist   = (uint32_t)(goal > pos ? goal - pos : pos - goal);
@@ -340,6 +366,49 @@ void sim_init(sim_bus_t *bus)
     memset(bus, 0, sizeof *bus);
 }
 
+/*
+ * EPROM 區的出廠值。有標來源的取自原廠記憶體表（docs/memory-table-check.md 第四節）；
+ * 原廠表沒給、依版本而異的（電壓門檻、PID、保護電流…）維持 0，等 W10 真機快照。
+ */
+static void factory_eprom(sim_servo_t *s, uint8_t id)
+{
+    put16(s, SIM_ADDR_MODEL, 777);
+    s->table[SIM_ADDR_ID]            = id;
+    s->table[SIM_ADDR_BAUD]          = 0;      /* 1 Mbps */
+    s->table[SIM_ADDR_RETURN_DELAY]  = 250;    /* 500 µs；模擬器不看，延遲用 hal_sim 的 latency_ms */
+    s->table[SIM_ADDR_STATUS_LEVEL]  = 1;
+    put16(s, SIM_ADDR_MIN_LIMIT, 0);
+    put16(s, SIM_ADDR_MAX_LIMIT, 4095);
+    s->table[SIM_ADDR_MAX_TEMP]      = 70;     /* 原廠表 */
+    put16(s, SIM_ADDR_MAX_TORQUE, 1000);
+    s->table[SIM_ADDR_PHASE]         = 0;      /* 原廠表沒給；BIT3 = 0 → 速度 0 = 停止，比較安全 */
+    s->table[SIM_ADDR_UNLOAD_COND]   = 44;     /* 原廠表：過熱、過流、過載保護開 */
+    s->table[SIM_ADDR_LED_ALARM]     = 47;     /* 原廠表 */
+    s->table[SIM_ADDR_CW_DEADZONE]   = 1;      /* 原廠表 */
+    s->table[SIM_ADDR_CCW_DEADZONE]  = 1;      /* 原廠表 */
+    s->table[SIM_ADDR_RESOLUTION]    = 1;      /* 原廠表 */
+    s->table[SIM_ADDR_PROT_TORQUE]   = 20;     /* 原廠表 */
+    s->table[SIM_ADDR_PROT_TIME]     = 200;    /* 原廠表 */
+    s->table[SIM_ADDR_OVLD_TORQUE]   = 80;     /* 原廠表 */
+    s->table[SIM_ADDR_OC_TIME]       = 200;    /* 原廠表 */
+}
+
+/*
+ * 上電時 SRAM 區的初始值。present 是編碼器量到的實際角度，由呼叫者決定：
+ * 新掛上的馬達給 2048，斷電重開則沿用斷電前的位置。
+ */
+static void power_on_sram(sim_servo_t *s, uint16_t present)
+{
+    memset(&s->table[SIM_EPROM_END], 0, SIM_TABLE_SIZE - SIM_EPROM_END);
+    put16(s, SIM_ADDR_TORQUE_LIMIT, get16(s, SIM_ADDR_MAX_TORQUE));   /* 上電時由 0x10 複製 */
+    s->table[SIM_ADDR_LOCK] = 0;                                      /* 原廠表：上電預設 0 */
+    put16(s, SIM_ADDR_PRESENT_POS, present);
+    put16(s, SIM_ADDR_GOAL_POS, present);      /* 與當前位置相同：開扭矩不會突然跳動 */
+    s->table[SIM_ADDR_VOLTAGE]     = 120;
+    s->table[SIM_ADDR_TEMPERATURE] = 25;
+    s->frac = 0;
+}
+
 sim_servo_t *sim_add_servo(sim_bus_t *bus, uint8_t id)
 {
     for (size_t k = 0; k < SIM_MAX_SERVOS; k++) {
@@ -348,23 +417,22 @@ sim_servo_t *sim_add_servo(sim_bus_t *bus, uint8_t id)
 
         memset(s, 0, sizeof *s);
         s->present = true;
-        put16(s, SIM_ADDR_MODEL, 777);
-        s->table[SIM_ADDR_ID]           = id;
-        s->table[SIM_ADDR_BAUD]         = 0;      /* 1 Mbps */
-        s->table[SIM_ADDR_RETURN_DELAY] = 250;    /* 500 µs；模擬器不看，延遲用 hal_sim 的 latency_ms */
-        s->table[SIM_ADDR_STATUS_LEVEL] = 1;
-        put16(s, SIM_ADDR_MIN_LIMIT, 0);
-        put16(s, SIM_ADDR_MAX_LIMIT, 4095);
-        put16(s, SIM_ADDR_MAX_TORQUE, 1000);
-        put16(s, SIM_ADDR_TORQUE_LIMIT, 1000);
-        s->table[SIM_ADDR_LOCK]         = 1;
-        put16(s, SIM_ADDR_PRESENT_POS, 2048);
-        put16(s, SIM_ADDR_GOAL_POS, 2048);        /* 與當前位置相同：開扭矩不會突然跳動 */
-        s->table[SIM_ADDR_VOLTAGE]      = 120;
-        s->table[SIM_ADDR_TEMPERATURE]  = 25;
+        factory_eprom(s, id);
+        memcpy(s->eprom, s->table, SIM_EPROM_END);   /* 出廠值就是 flash 裡保存的值 */
+        power_on_sram(s, 2048);
         return s;
     }
     return NULL;
+}
+
+void sim_power_cycle(sim_bus_t *bus, uint8_t id)
+{
+    sim_servo_t *s = sim_find(bus, id);
+    if (!s) return;
+
+    uint16_t present = get16(s, SIM_ADDR_PRESENT_POS);
+    memcpy(s->table, s->eprom, SIM_EPROM_END);       /* Lock = 1 時寫的值在這裡消失 */
+    power_on_sram(s, present);
 }
 
 sim_servo_t *sim_find(sim_bus_t *bus, uint8_t id)
@@ -383,6 +451,10 @@ void sim_poke(sim_bus_t *bus, uint8_t id, uint8_t addr, uint16_t value)
 
     if (reg_width(addr) == 2) put16(s, addr, value);
     else                      s->table[addr] = (uint8_t)value;
+
+    /* EPROM 區連 flash 映像一起改：當成出廠就是這個值，power cycle 後仍保留 */
+    for (size_t i = 0; i < reg_width(addr) && addr + i < SIM_EPROM_END; i++)
+        s->eprom[addr + i] = s->table[addr + i];
 
     if (addr == SIM_ADDR_PRESENT_POS) s->frac = 0;
 }

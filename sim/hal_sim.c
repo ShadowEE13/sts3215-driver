@@ -6,37 +6,52 @@
 #include <stdbool.h>
 #include <string.h>
 
-/* now 是否已到達 at；用差值判斷，計數器溢位時仍正確 */
-static bool reached(uint32_t now, uint32_t at)
+/* 第 i 個 byte 是否已抵達：從送出起已經過它的延遲時間 */
+static bool arrived(const hal_sim_t *hs, size_t i)
 {
-    return (uint32_t)(now - at) < 0x80000000u;
+    return hal_timed_out(hs->rx_sent[i], hs->now_ms, hs->rx_delay[i]);
 }
 
-static void rx_push(hal_sim_t *hs, const uint8_t *buf, size_t n, uint32_t at)
+/* 現在送出的回應放進 RX 佇列，latency_ms 之後才讀得到 */
+static void rx_push(hal_sim_t *hs, const uint8_t *buf, size_t n)
 {
-    /* 序列線上 byte 不會超車：比前一個 byte 早到的，延到跟它同時抵達 */
-    if (hs->rx_len > 0 && !reached(at, hs->rx_at[hs->rx_len - 1]))
-        at = hs->rx_at[hs->rx_len - 1];
+    uint32_t sent  = hs->now_ms;
+    uint32_t delay = hs->latency_ms;
+
+    /*
+     * 序列線上 byte 不會超車：如果在這批抵達的時刻（sent + delay），
+     * 佇列最後一個 byte 都還沒到，就讓這批跟它同時抵達。
+     */
+    if (hs->rx_len > 0) {
+        size_t last = hs->rx_len - 1;
+        if (!hal_timed_out(hs->rx_sent[last], sent + delay, hs->rx_delay[last])) {
+            sent  = hs->rx_sent[last];
+            delay = hs->rx_delay[last];
+        }
+    }
 
     for (size_t i = 0; i < n && hs->rx_len < HAL_SIM_RX_CAP; i++) {   /* 滿了就丟，同 UART overrun */
-        hs->rx[hs->rx_len]    = buf[i];
-        hs->rx_at[hs->rx_len] = at;
+        hs->rx[hs->rx_len]       = buf[i];
+        hs->rx_sent[hs->rx_len]  = sent;
+        hs->rx_delay[hs->rx_len] = delay;
         hs->rx_len++;
     }
 }
 
 static void rx_pop(hal_sim_t *hs, size_t n)
 {
-    memmove(hs->rx, hs->rx + n, hs->rx_len - n);
-    memmove(hs->rx_at, hs->rx_at + n, (hs->rx_len - n) * sizeof hs->rx_at[0]);
-    hs->rx_len -= n;
+    size_t rest = hs->rx_len - n;
+    memmove(hs->rx, hs->rx + n, rest);
+    memmove(hs->rx_sent, hs->rx_sent + n, rest * sizeof hs->rx_sent[0]);
+    memmove(hs->rx_delay, hs->rx_delay + n, rest * sizeof hs->rx_delay[0]);
+    hs->rx_len = rest;
 }
 
 /* 佇列開頭有幾個 byte 已經抵達 */
 static size_t rx_ready(const hal_sim_t *hs)
 {
     size_t n = 0;
-    while (n < hs->rx_len && reached(hs->now_ms, hs->rx_at[n])) n++;
+    while (n < hs->rx_len && arrived(hs, n)) n++;
     return n;
 }
 
@@ -50,7 +65,7 @@ static int hs_write(void *ctx, const uint8_t *buf, size_t len)
     if (hs->tx_last_len) memcpy(hs->tx_last, buf, hs->tx_last_len);
 
     size_t n = sim_receive(hs->bus, buf, len, resp, sizeof resp);
-    rx_push(hs, resp, n, hs->now_ms + hs->latency_ms);
+    rx_push(hs, resp, n);
     return (int)len;
 }
 

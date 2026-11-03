@@ -40,9 +40,13 @@ typedef struct {
     uint8_t  tx_last[HAL_SIM_TX_CAP];  /* 最後一次 write 的內容（超過截斷） */
     size_t   tx_last_len;
 
-    /* RX 佇列：每個 byte 記錄抵達時間，未抵達的 read 不到、flush 也清不掉 */
+    /*
+     * RX 佇列：每個 byte 記錄「送出時間」與「延遲」，經過延遲才算抵達。
+     * 還沒抵達的 byte read 不到，flush 也清不掉。
+     */
     uint8_t  rx[HAL_SIM_RX_CAP];
-    uint32_t rx_at[HAL_SIM_RX_CAP];
+    uint32_t rx_sent[HAL_SIM_RX_CAP];
+    uint32_t rx_delay[HAL_SIM_RX_CAP];
     size_t   rx_len;
 } hal_sim_t;
 
