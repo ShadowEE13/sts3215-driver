@@ -26,7 +26,7 @@
 
 **協定研讀**
 - 完成 `docs/protocol-notes.md`：封包格式、checksum 虛擬碼、九項指令集、精簡 Control Table、逐 byte 拆解範例、Error byte 位元定義
-- 完成 `docs/lerobot-notes.md`：與 LeRobot（commit `8c920c4`, 2026-10-03）及飛特原廠 Python SDK（`ftservo/FTServo_Python`, 2026-09-29）交叉比對
+- 完成 `docs/LeRobot-notes.md`：與 LeRobot（commit `8c920c4`, 2026-10-03）及飛特原廠 Python SDK（`ftservo/FTServo_Python`, 2026-09-29）交叉比對
 - 以程式驗算手冊中全部 15 個範例封包的 checksum 與 Length
 
 **文獻研讀**

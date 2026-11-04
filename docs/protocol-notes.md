@@ -17,7 +17,7 @@
 | ID 範圍 | 0–253（0x00–0xFD），254（0xFE）為廣播 ID |
 | 鮑率 | 出廠預設 1 Mbps，可設定 38400bps–1Mbps（地址 0x06） |
 | 多字節數值順序 | **低位元組在前，高位元組在後**（little-endian） |
-| 負數表示法 | **sign-magnitude**（最高位為方向位），不是二補數；詳見 `lerobot-notes.md` 4.1 |
+| 負數表示法 | **sign-magnitude**（最高位為方向位），不是二補數；詳見 `LeRobot-notes.md` 4.1 |
 | 編碼器解析度 | 12-bit，0–4095 對應 0–360°，中位 2048，解析度 0.088°/step |
 
 > ⚠️ 廣播 ID 注意：用 0xFE 發送指令時，除了 PING 以外都不會收到回應包。多顆馬達掛同一條 bus 時不能用廣播 PING。
@@ -185,7 +185,7 @@ checksum = (~checksum) & 0xFF   # 取反（bitwise NOT）
 - [ ] 確認 follower (12V) 的 0x0E/0x0F 過壓/欠壓門檻出廠預設值，是否需要依電源重新設定
 - [x] ~~確認 0x2C「運行時間」欄位的實際單位~~ → 已由原廠 SDK 釐清：位置模式填 0
 - [ ] 量測單包 WRITE/READ 的實際往返時間，作為第 11–13 週延遲量測的基準
-- [ ] 其他對照 LeRobot 後新增的驗證項目，見 `lerobot-notes.md` 第 9 節
+- [ ] 其他對照 LeRobot 後新增的驗證項目，見 `LeRobot-notes.md` 第 9 節
 
 ## 7. 下一步（對應第 6–7 週）
 

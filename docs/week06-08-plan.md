@@ -1,8 +1,8 @@
 # 第 6–8 週計畫（補進度）：HAL 介面 + 模擬器 + Protocol 層
 
 **原訂期間**：W6–W8（10/12–11/01），期中考期間未執行
-**補做期間**：11/04（三）– 11/08（日）
-**相關文件**：`sim-spec.md`（模擬器規格）、`protocol-notes.md`（協定與範例封包）、`lerobot-notes.md`（parser 流程、sign-magnitude）、`schedule.md`（總時程）
+**補做期間**：11/04（三）– 11/08（日），屬學期第 9 週
+**相關文件**：`sim-spec.md`（模擬器規格）、`protocol-notes.md`（協定與範例封包）、`LeRobot-notes.md`（parser 流程、sign-magnitude）、`memory-table-check.md`（記憶體表核對）、`schedule.md`（總時程）
 
 ---
 
@@ -12,12 +12,12 @@
 
 | 原訂內容 | 原週次 | 本次處理 |
 |---|---|---|
-| 定義 `sts_hal.h`、模擬器實作 | W6 | ✅ 11/04 補做 |
-| C 單軸實作：組封包、checksum、WRITE、READ 解析 | W6–7 | ✅ 11/05 補做 |
-| 硬性檢查點：自算 checksum 與官方一致 | W6–7 | ⚠️ 本次以手冊範例封包驗證；與真機擷取封包比對留至 W10 |
+| 定義 `sts_hal.h`、模擬器實作 | W6 | ✅ 11/04 完成 |
+| C 單軸實作：組封包、checksum、WRITE、READ 解析 | W6–7 | 組包 ✅ 11/04；解析進行中 |
+| 硬性檢查點：自算 checksum 與官方一致 | W6–7 | ⚠️ 已以手冊範例封包驗證（驗收 B）；與真機擷取封包比對留至 W10 |
 | LeRobot 送指令 + 擷取真實封包 | W6–7 | ⏭ 移至 W10（需真機） |
-| 逾時處理、重傳、錯誤碼解析 | W8 | ✅ 11/06–11/08 補做 |
-| 六軸同步控制（SYNC READ / SYNC WRITE） | W8 | ✅ 11/06–11/08 先在模擬器上完成；真機驗證留至 W10 |
+| 逾時處理、重傳、錯誤碼解析 | W8 | 11/06–11/08 |
+| 六軸同步控制（SYNC READ / SYNC WRITE） | W8 | 模擬器端 ✅ 11/04 提前完成；驅動端 11/06–11/08；真機驗證留至 W10 |
 
 ---
 
@@ -33,9 +33,9 @@
 
 ### 步驟 0：Repo 骨架（約 30 分）
 
-- [ ] 建立目錄：`include/`、`src/`、`sim/`、`tests/`
-- [ ] Makefile 從第一天就開 `-std=c11 -Wall -Wextra -Werror -Wconversion`（太晚開會一次冒出大量警告）
-- [ ] 測試框架：自寫約 10 行的 `CHECK()` 巨集，不引入第三方
+- [x] 建立目錄：`include/`、`src/`、`sim/`、`tests/`
+- [x] Makefile 從第一天就開 `-std=c11 -Wall -Wextra -Werror -Wconversion`（太晚開會一次冒出大量警告）
+- [x] 測試框架：自寫約 10 行的 `CHECK()` 巨集，不引入第三方
 
 ### 步驟 1：`include/sts_hal.h`（約 1–2 小時，多數時間在設計）
 
@@ -48,16 +48,20 @@
 | 時間比較方式？ | `uint32_t` 毫秒；一律寫 `(uint32_t)(now - start) >= timeout` | 計數器溢位時仍正確 |
 | `ctx` 用途？ | 所有狀態放在呼叫者提供的 struct，Protocol 層**零全域變數** | leader 與 follower 是兩條 bus，同一份程式碼要能同時開兩個實例 |
 
-介面組成（依 `sim-spec.md` 第 4 節）：`write` / `read` / `flush_rx` / `millis` 四個函式指標 + `void *ctx`。
+介面組成：`hal_ops_t` 為 `write` / `read` / `flush_rx` / `millis` 四個函式指標（每個的第一個參數都是 `void *ctx`），宣告成 `static const`；`sts_hal_t` = `ops` 指標 + `ctx`，代表一條 bus。另提供 `hal_write()` 等 inline 包裝與 `hal_timed_out()`。
+
+- [x] `include/sts_hal.h` 完成，六項決策理由寫入 header 註解
+- [x] `tests/test_hal.c`：計數器溢位判斷、兩條 bus 共用 const 函式表且 ctx 互不干擾（26 項）
 
 ### 步驟 2：`sim/servo_sim`：Control Table + 指令處理（約 3 小時）
 
 - [x] 每顆馬達一個 128-byte 陣列，每個位址標註屬性（唯讀 / EPROM / SRAM），WRITE 依屬性決定是否接受
-- [x] EPROM 寫入檢查 Lock（0x37）
+- [x] EPROM 寫入檢查 Lock（0x37）——**語意與直覺相反，見 F-15**
 - [x] 支援 PING / READ / WRITE；廣播 ID 0xFE 僅 PING 回應
 - [x] Model Number（0x03，2 bytes）回 777
 - [x] **模擬器的 parser 不與驅動共用程式碼**：刻意寫得簡單直白，共用就失去互相驗證的意義
 - [x] 測試鉤子 `sim_poke(id, addr, value)`：直接設定暫存器。驗收會用到，例如範例 4.2 的回應位置是 1304，須先將 0x38 設為 1304，模擬器才回得出 `18 05 DD`
+- [x] 提前完成：SYNC READ / SYNC WRITE、應答級別 0x08、`sim_power_cycle()`
 
 ### 步驟 3：`sim/hal_sim`（約 1 小時）
 
@@ -75,9 +79,12 @@
 - [x] Torque_Enable（0x28）為 0 時不動
 - [x] 同步更新 Present_Position（0x38）、Present_Speed（0x3A）、Moving（0x42）
 - [x] tick 綁定在虛擬時鐘上
+- [x] Goal_Velocity = 0 的行為由 Phase（0x12）BIT3 決定，見 F-17
 - [x] 規格未定義的行為（例：扭矩關閉時寫入目標位置，真機是否自動開扭矩？）→ 先選一種實作，並列入 `sim/README.md` 的「待真機驗證」清單，不默默決定
 
 ### ✅ 驗收 A：模擬器 vs 手冊
+
+> **11/04 通過**：`make demo` 169/169（含驗收 A 三個範例逐 byte 相符、RESET checksum 為 `F2`）。另經 gcc / clang / ASan+UBSan 交叉編譯無警告、無記憶體錯誤。
 
 `sim/demo.c` 以手組 byte 陣列將範例 4.1 / 4.2 / 4.3 餵入模擬器，回應與手冊**逐 byte 相同**。此步不經過驅動。
 
@@ -94,7 +101,7 @@
 ### 步驟 5：純函式 + 單元測試（約 2 小時）
 
 - [x] `checksum`、`build_packet`
-- [x] `sm_encode` / `sm_decode`（sign-magnitude，見 `lerobot-notes.md` 4.1）
+- [x] `sm_encode` / `sm_decode`（sign-magnitude，見 `LeRobot-notes.md` 4.1）
 - [x] little-endian 組合 / 拆解
 
 測資：
@@ -105,11 +112,20 @@
 | RESET `FF FF 01 02 0A ??` | checksum = `F2`（手冊印 `F6` 有誤，見 F-02） | 程式依公式計算，非照抄手冊 |
 | sign-magnitude −100（BIT15） | `64 80` | 負數編碼（F-01） |
 
+### ✅ 驗收 B：驅動組包 vs 手冊
+
+> **11/04 通過**：`test_protocol` 20 項、`test_device` 653 項全數通過，驅動組出的 4.1–4.3 指令包與手冊逐 byte 相同。
+> **反向驗證**：故意把 checksum 改成連 `FF FF` 一起加，驗收 B 有 4 項失敗，證明測試對這類錯誤有鑑別力。
+> **獨立對照**：另以 Python 依手冊公式重寫組包與 sign-magnitude，與 C 版結果一致（含 248 參數的最大封包、`INT32_MIN` 等極端值）。
+
+至此「協定理解正確」已有兩道獨立的外部證據（A 從模擬器側、B 從驅動側，兩者都對照手冊而非彼此）。
+
 ### 步驟 6：收包狀態機（約 2–3 小時，這幾天最難的部分）
 
-- [ ] 依 `lerobot-notes.md` 第 5 節 7 步驟實作
+- [ ] 依 `LeRobot-notes.md` 第 5 節 7 步驟實作
 - [ ] 設計為**一次餵一個 byte** 的狀態機（直接對應 STM32 UART RX 中斷，移植時可原樣使用）
 - [ ] API 將 **comm_result**（封包是否正確收到）與 **error byte**（馬達是否異常）分開回傳
+- [ ] echo 由 HAL 濾除（F-20：轉接板回送的 PING 封包各欄位全部合法，Instruction 會被誤判為 error byte）
 
 測資（不需模擬器，直接餵 byte 陣列）—**驗收 C**：
 
@@ -123,7 +139,7 @@
 
 - [ ] `sts_ping` / `sts_read` / `sts_write`
 - [ ] 流程：`flush_rx` → `write` → 收包至完成或逾時 → 比對回應 ID
-- [ ] 分層自我檢查：`src/` 內 grep `sim/` 與 `termios` 必須零筆
+- [ ] 分層自我檢查：`make layers`——`src/` 內 grep `sim/` 與平台 API 必須零筆
 
 ### ✅ 驗收 D：驅動 ↔ 模擬器
 
@@ -136,7 +152,7 @@
 
 ### 步驟 8：逾時與重傳
 
-- [ ] 逾時值依 `lerobot-notes.md` 第 6 節公式：`(預期長度 + 3) × 每 byte 傳輸時間 + 餘裕`；餘裕設為參數，不寫死（W12 調 latency timer 時要改）
+- [ ] 逾時值依 `LeRobot-notes.md` 第 6 節公式：`(預期長度 + 3) × 每 byte 傳輸時間 + 餘裕`；餘裕設為參數，不寫死（W12 調 latency timer 時要改）
 - [ ] 重傳次數可設定（LeRobot 預設讀取重試 2 次）
 - [ ] 只有通訊失敗才重傳；收到回應但 error byte 非 0 **不重傳**，直接回報
 
@@ -145,17 +161,17 @@
 - [ ] 將 error byte / 0x41 的各 bit 解成具名旗標（電壓、磁編碼、過熱、過流、過載，見 `protocol-notes.md` 5.3）
 - [ ] 提供轉文字的函式，給 log 與日後安全層使用
 
-### 步驟 10：模擬器故障注入（依 `sim-spec.md` 第 6 節）
+### 步驟 10：模擬器故障注入的對應測試
 
-- [ ] 指定馬達不回應
-- [ ] 強制 error byte 任一位元
-- [ ] 下一包 checksum 故意算錯
-- [ ] 回應前後插入雜訊 byte
-- [ ] SYNC READ 時讓中途一顆不回應
+模擬器端的注入功能已於 11/04 實作，本步驟補上驅動側的測試：
 
-每一種故障都要有對應的測試，確認驅動回報的 comm_result / error 正確。
+- [ ] 指定馬達不回應 → `COMM_RX_TIMEOUT`
+- [ ] 強制 error byte 任一位元 → 封包收取成功但回報對應旗標
+- [ ] 下一包 checksum 故意算錯 → `COMM_RX_CORRUPT`
+- [ ] 回應前後插入雜訊 byte → 仍能重新同步
+- [ ] SYNC READ 時讓中途一顆不回應 → 其餘馬達的結果不受影響
 
-### 步驟 11：SYNC READ / SYNC WRITE
+### 步驟 11：SYNC READ / SYNC WRITE（驅動側）
 
 - [ ] 先在 `demo.c` 手組封包餵模擬器，對照手冊附的 SYNC 範例（同樣是 A → B/C → D 的順序）
 - [ ] SYNC READ：回應依 ID 順序逐包返回，**每顆馬達各自回報結果**，一顆失敗不應讓整次讀取作廢
@@ -164,10 +180,12 @@
 
 ### ✅ 第 6–8 週補進度完成條件
 
-- [ ] 驗收 A、B、C、D 全部通過
-- [ ] 六軸 SYNC READ / SYNC WRITE 在模擬器上通過
-- [ ] 每種故障注入都有對應測試且通過
-- [ ] `make` 無警告
+- [x] 驗收 A 通過
+- [x] 驗收 B 通過
+- [ ] 驗收 C、D 通過
+- [ ] 六軸 SYNC READ / SYNC WRITE 的驅動側在模擬器上通過
+- [ ] 每種故障注入都有對應的驅動側測試且通過
+- [x] `make` 無警告
 
 > 模擬器上的六軸不等於完成。封包結構與同步邏輯先在這裡驗證完，W10 真機時間就能專注在只有真機會出現的問題：匯流排競爭、負載下的時序、掉包。
 
@@ -175,12 +193,12 @@
 
 ## 六、驗收結構總表
 
-| 驗收 | 比對 | 抓得到的錯誤 |
-|---|---|---|
-| A | 手冊發送包 → 模擬器 → 比對手冊回應包 | 模擬器的協定理解 |
-| B | 驅動組包 vs 手冊 | 驅動的編碼 |
-| C | 手冊回應包 → 驅動解析 | 驅動的解碼 |
-| D | 驅動 ↔ 模擬器 | 整合、逾時流程 |
+| 驗收 | 比對 | 抓得到的錯誤 | 狀態 |
+|---|---|---|---|
+| A | 手冊發送包 → 模擬器 → 比對手冊回應包 | 模擬器的協定理解 | ✅ |
+| B | 驅動組包 vs 手冊 | 驅動的編碼 | ✅ |
+| C | 手冊回應包 → 驅動解析 | 驅動的解碼 | 進行中 |
+| D | 驅動 ↔ 模擬器 | 整合、逾時流程 | 未開始 |
 
 A、B、C 以手冊為外部參照；D 只證明兩邊彼此同意。例如兩邊都誤以為 checksum 要包含 `FF FF`，D 照樣通過，只有 A/B/C 會失敗。**D 必須排在最後，且不能取代前三者。**
 
@@ -198,7 +216,7 @@ A、B、C 以手冊為外部參照；D 只證明兩邊彼此同意。例如兩�
 
 **每步流程**：Claude Code 完成一步 → `make test` + `make layers` 通過 → 本人 review 並 commit（`step N: ...`）→ 回到 Claude 對話 review 與解釋 → 下一步。
 
-**同源風險升高**：模擬器與驅動現在出自同一個模型，原本「不同作者」的保險消失。因此驗收 A/B/C 成為唯一的外部防線，不可省略；`sim/` 與 `src/` 不共用任何程式碼，驗收封包一律逐 byte 照抄手冊範例。
+**同源風險升高**：模擬器與驅動現在出自同一個模型，原本「不同作者」的保險消失。因此驗收 A/B/C 成為唯一的外部防線，不可省略；`sim/` 與 `src/` 不共用任何程式碼，驗收封包一律逐 byte 照抄手冊範例。此外已補上三道額外防線：反向驗證（故意寫錯確認測試抓得到）、Python 獨立重寫對照、原廠記憶體表逐址核對（已因此抓出 F-15）。
 
 **HAL 設計決策（11/04 定案）**：函式表與實例分開（`hal_ops_t` 為 `const` 函式表，`sts_hal_t` = `ops` + `ctx`）；`write`/`read` 回傳 `int`、長度用 `size_t`。完整理由見 `CLAUDE.md`。
 
@@ -208,7 +226,9 @@ A、B、C 以手冊為外部參照；D 只證明兩邊彼此同意。例如兩�
 
 本次無法補、需要真機的原 W6–W8 項目：
 
+- [ ] `tools/snapshot.py`：**最先執行**，取 LeRobot 動過之前的唯讀暫存器快照（出廠值一旦被改寫就取不回）
 - [ ] 跑通 LeRobot 官方範例，建立「已知可運作」基準
 - [ ] 擷取 PING / READ / WRITE / SYNC 參考封包並存檔
 - [ ] **原硬性檢查點**：自算 checksum 與真機擷取封包逐 byte 一致
-- [ ] 自製驅動接 `hal_pc.c` 上真機：先單軸，再六軸
+- [ ] 實作 `hal_win32.c`，自製驅動接上真機：先單軸，再六軸
+- [ ] 逐條確認 V-01～V-18 與 `sim/README.md` 的待驗證清單（V-06 echo 因 F-20 升為高優先）

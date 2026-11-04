@@ -1,6 +1,6 @@
 # 虛擬 STS3215 模擬器 — 實作規格
 
-這份是給實作用的交接文件。背景與技術細節見同資料夾的 `protocol-notes.md`、`lerobot-notes.md`。
+這份是給實作用的交接文件。背景與技術細節見同資料夾的 `protocol-notes.md`、`LeRobot-notes.md`。
 
 ---
 
