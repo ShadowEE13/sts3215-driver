@@ -209,7 +209,7 @@ sequenceDiagram
 
 **不使用 `QueryPerformanceCounter` 或 `perf_counter`**：它們的起點是開機或行程啟動後的任意時刻，跨行程相減得到的是兩個時鐘原點的差，不是延遲。
 
-HAL 層不加微秒計時，避免三種 HAL 實作都要多一個函式（見 `lab-log/week07.md` C-15）。純粹在控制層內部量測的區段（例如單包 UART 往返）不跨行程，可用高解析度計時器。
+HAL 層不加微秒計時，避免三種 HAL 實作都要多一個函式（見 `lab-log/week09a.md` C-15）。純粹在控制層內部量測的區段（例如單包 UART 往返）不跨行程，可用高解析度計時器。
 
 ---
 
