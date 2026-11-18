@@ -29,10 +29,14 @@ snapshot.py — STS3215 暫存器唯讀快照 + READ 往返時間量測
     python tools/snapshot.py --port COM5 --label scan --scan        # 不確定有哪些 ID 時先掃
     python tools/snapshot.py --port fake --label test               # 在家用 fake_bus 測試
     python tools/snapshot.py --port fake:echo,missing=3 --label t   # fake_bus 故障注入
+    python tools/snapshot.py --port loop:// --label loop --ids 1    # pyserial 回送埠：測真實 serial 路徑
+
+    找 COM port：python -m serial.tools.list_ports -v
 
 輸出
     snapshots/<日期>_<時間>_<label>.json
     每顆馬達保留原始 bytes（主要紀錄）與解碼後的暫存器（方便閱讀），外加 RTT 統計。
+    另存 PING 與各段 READ 的收送原始封包（packets），作為真機的參考封包。
 """
 
 from __future__ import annotations
@@ -47,7 +51,7 @@ import sys
 import time
 from pathlib import Path
 
-SCRIPT_VERSION = "2.0 (2026-11-17 重寫)"
+SCRIPT_VERSION = "2.1 (2026-11-18：loop:// 測試、參考封包)"
 
 # ---------------------------------------------------------------------------
 # 協定常數
@@ -196,6 +200,15 @@ class Bus:
             "bad_packets": 0, "junk_bytes": 0, "unexpected_id": 0,
             "echo_detected": 0,
         }
+        self.capture: list | None = None   # 不是 None 時，記錄每次收送的原始 bytes
+
+    def _record(self, pkt: bytes, reply: dict | None, echo: bool) -> None:
+        if self.capture is not None:
+            self.capture.append({
+                "tx": pkt.hex(" "),
+                "rx": reply["raw"].hex(" ") if reply else None,
+                "echo": echo,
+            })
 
     def transact_once(self, sid: int, instruction: int, params: bytes = b""):
         """送一包、收一包。回傳 (reply, rtt_ms)；逾時回傳 (None, None)。"""
@@ -211,6 +224,7 @@ class Bus:
 
         buf = bytearray()
         echo_checked = False
+        echo_this = False
         while time.perf_counter() < deadline:
             n = self.port.in_waiting
             chunk = self.port.read(n if n else 1)
@@ -223,6 +237,7 @@ class Bus:
                     if bytes(buf[: len(pkt)]) == pkt:
                         del buf[: len(pkt)]
                         self.stats["echo_detected"] += 1
+                        echo_this = True
                     echo_checked = True
                 else:
                     continue   # 還分不出是 echo 還是回應，繼續收
@@ -234,9 +249,11 @@ class Bus:
                 self.stats["unexpected_id"] += 1
                 continue
             rtt_ms = (time.perf_counter() - t0) * 1000.0
+            self._record(pkt, reply, echo_this)
             return reply, rtt_ms
 
         self.stats["timeouts"] += 1
+        self._record(pkt, None, echo_this)
         return None, None
 
     def transact(self, sid: int, instruction: int, params: bytes = b""):
@@ -373,7 +390,8 @@ def open_port(spec: str, baud: int):
         import fake_bus
         return fake_bus.from_spec(spec)
     import serial  # pyserial；lerobot 環境已內含
-    return serial.Serial(spec, baudrate=baud, timeout=0.001, write_timeout=0.1)
+    # serial_for_url 同時接受 "COM5" 與 "loop://"（pyserial 內建的回送測試埠）
+    return serial.serial_for_url(spec, baudrate=baud, timeout=0.001, write_timeout=0.1)
 
 
 def git_commit() -> str | None:
@@ -441,13 +459,18 @@ def main(argv: list[str] | None = None) -> int:
 
         motors = []
         for sid in ids:
+            bus.capture = []                      # 記錄 PING 與 READ 的原始收送（參考封包）
             reply, ping_rtt = bus.ping(sid)
             m = {"id": sid, "responded": reply is not None}
             if reply is None:
+                m["packets"] = bus.capture
+                bus.capture = None
                 motors.append(m)
                 continue
             m["ping_error_byte"] = reply["error"]
             table, notes = read_table(bus, sid)
+            m["packets"] = bus.capture
+            bus.capture = None                    # RTT 量測幾百包，不記錄
             m["raw"] = raw_hex(table)
             m["registers"] = decode(table)
             m["notes"] = notes

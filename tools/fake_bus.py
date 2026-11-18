@@ -295,8 +295,17 @@ def _selftest() -> int:
             check("6 顆", len(data["motors"]) == 6)
             check("meta 有 label", data["meta"]["label"] == "selftest")
             check("echo 有記錄", data["bus_stats"]["echo_detected"] > 0)
+            pk = data["motors"][0]["packets"]
+            check("參考封包：第一包是 PING", pk[0]["tx"] == "ff ff 01 02 01 fb")
+            check("參考封包：PING 回應", pk[0]["rx"] == "ff ff 01 02 00 fc")
+            check("參考封包：標記 echo", pk[0]["echo"] is True)
+            check("參考封包：PING + 三段 READ", len(pk) == 4)
+            check("參考封包：READ 0x00 長度 40", pk[1]["tx"] == "ff ff 01 04 02 00 28 d0")
         code = S.main(["--port", "fake:missing=2", "--label", "m", "--rtt", "0", "--out", d])
         check("缺馬達時回傳 2", code == 2)
+        f2 = [f for f in Path(d).glob("*_m.json")][0]
+        miss = json.loads(f2.read_text(encoding="utf-8"))["motors"][1]
+        check("缺馬達：記錄三次 PING 皆無回應", len(miss["packets"]) == 3 and all(p["rx"] is None for p in miss["packets"]))
 
     print()
     print(f"通過 {passed}，失敗 {failed}")

@@ -1,6 +1,6 @@
 # SO-101 組裝檢查清單（W11 組裝場次用）
 
-**撰寫**：2026/11/17
+**撰寫**：2026/11/17　**更新**：2026/11/18（組裝訂於 11/19 晚上；補上現場指令）
 **用途**：W11 由學長帶領組裝專題生專用手臂（C-24）。本清單整理官方流程、標出 snapshot 的插入點，並列出現場要記錄的項目，之後當作 `lab-log/week11.md` 的骨架。
 **依據**：[LeRobot SO-101 官方文件](https://huggingface.co/docs/lerobot/en/so101)、[Seeed Studio SO-ARM101 Ch.6](https://wiki.seeedstudio.com/robotics/soarm_physical_ai_course_chapter_6/)、LeRobot main 分支原始碼（2026/11/17 閱讀）。本機版本待以 V-19 核對。
 
@@ -24,10 +24,11 @@
 
 ## 0. 出發前（在家）
 
-- [ ] `git ls-files tools/` 確認 `snapshot.py`、`fake_bus.py` 已進 repo（W9 紀錄寫「尚未放入 repo」）
-- [ ] 用 `fake_bus.py` 重跑一次 `snapshot.py`，確認能動
-- [ ] 筆電的 `lerobot` 環境可啟動（自己的筆電跑 snapshot，不在別人電腦上裝東西）
-- [ ] 傳訊息給學長，約好在「設完 ID、開始組裝前」停約 5 分鐘
+- [x] `snapshot.py`、`fake_bus.py` 已進 repo（原檔遺失，11/17 重寫）
+- [x] `python tools/fake_bus.py` 自我測試通過
+- [ ] `python tools/snapshot.py --port loop:// --label looptest --ids 1 --rtt 3 --out %TEMP%`：pyserial 真實路徑，應顯示「echo：有」、ID 1 無回應、結束碼 2
+- [x] 筆電的 `lerobot` 環境裝好馬達套件（`pip check`、`lerobot-setup-motors --help` 通過）
+- [ ] 傳訊息給學長，約好在「設完 ID、開始組裝前」停約 5 分鐘，並問他電腦上的 LeRobot 版本
 - [ ] 帶麥克筆、標籤貼紙、手機（拍照）
 
 ---
@@ -90,12 +91,33 @@ lerobot-setup-motors --teleop.type=so101_leader  --teleop.port=COMy
 
 ## ★ snapshot
 
-- [ ] Follower：USB 換插到自己筆電 → `snapshot.py` → 存檔
-- [ ] Leader：同上
-- [ ] 確認檔案有 12 顆的完整暫存器、檔名標明 leader/follower 與日期
+**現場指令**（Miniforge Prompt，`conda activate lerobot`，`cd C:\GithubRepo\sts3215-driver`）
+
+```bash
+# 1. 找 COM port（插上轉接板前後各跑一次，多出來的那個就是）
+python -m serial.tools.list_ports -v
+
+# 2. Follower（COMx 換成實際編號）
+python tools/snapshot.py --port COMx --label follower-preassembly --note "setup-motors 後、組裝前；桌上串接；電源 __V"
+
+# 3. Leader
+python tools/snapshot.py --port COMy --label leader-preassembly --note "setup-motors 後、組裝前；桌上串接；電源 __V"
+```
+
+- 檔案存在 `snapshots/`，終端機會印出摘要表：每顆的型號、韌體、0x07、0x12、電壓門檻、RTT
+- 結束碼 2、出現「無回應的 ID」→ 檢查電源與串接，**不要**先跑任何 LeRobot 指令
+- 不確定 ID 時加 `--scan`
+
+**檢查**
+- [ ] Follower 6 顆都有回應
+- [ ] Leader 6 顆都有回應
+- [ ] 摘要表的 echo 欄位記下來（V-06）
+- [ ] 檔名有 leader / follower，`--note` 填了電源電壓
 - [ ] 存檔後才把 USB 還給學長
 
-**附帶數據**：12 顆中有 3–4 種型號（C001/C044/C046 + follower 版本），可比較不同型號的出廠值差異，例如 0x03 型號碼是否都是 777、0x0E/0x0F 電壓門檻、0x10 最大扭矩、0x12 Phase。網路上沒有現成數據，可放進報告。
+**順帶取得的資料**
+- 每顆馬達的 PING 與三段 READ 原始收送封包（JSON 的 `packets`），就是真機的參考封包。WRITE / SYNC 因唯讀原則不在其中
+- 型號差異（V-24、V-25）：12 顆中有 3–4 種型號（C001/C044/C046 + follower 版本），可比較 0x03 型號碼是否都是 777、0x0E/0x0F 電壓門檻、0x10 最大扭矩、0x12 Phase。網路上沒有現成數據，可放進報告
 
 ---
 
