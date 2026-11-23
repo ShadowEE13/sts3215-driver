@@ -104,7 +104,15 @@ numpy、任何框架；單一同步迴圈即可。
 丟棄超出部分，bufsize 用規格上限 512、安全層要接住 OSError（F-33）；
 阻塞中的 recvfrom 按 Ctrl+C 無反應，用 settimeout(1)（F-34）；
 sleep(0.01) 實測週期 10.833 ms，第 3 步要用 perf_counter() 算下一個
-喚醒點而非固定 sleep（F-35）。
+喚醒點而非固定 sleep（F-35）；Python 的 TimeoutError 是 OSError 的
+子類別，except TimeoutError 必須寫在 except OSError 之前，否則逾時
+會被當成封包錯誤（F-48）。
+
+**時間戳要走 ctypes 版本**：lerobot 環境是 Python 3.12.16（F-50），
+第 5 步會 import lerobot，所以控制層跑在 3.12 上。依 interface-spec.md
+§2.4，3.13 以前的 Windows 上 time.time_ns() 解析度只有約 15.6 ms，
+比要量的數毫秒迴路還粗——必須用 §2.4 的 ctypes 版本直接呼叫
+GetSystemTimePreciseAsFileTime()，否則 W13 量到的是計時器節拍。
 
 發現請用純文字描述、不要自己編 F/V 號，我會帶回統籌配號。
 ```
