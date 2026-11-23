@@ -1,7 +1,7 @@
 # 上層控制介面規格
 
-**版本**：v1.2
-**日期**：2026/11/05
+**版本**：v1.3
+**日期**：2026/11/23
 **負責**：C（控制與通訊層）
 **對象**：B（橋接程式）、下學期的 A（手臂狀態回傳）
 
@@ -161,6 +161,26 @@ static uint64_t now_unix_us(void)
 
 ---
 
+### 2.5 接收端的驗證順序
+
+收到 datagram 後依序檢查，任一項不過即丟棄該包，並在啟用回應時回報對應狀態碼：
+
+| 順序 | 檢查 | 不過時的狀態碼 |
+|---:|---|---|
+| 1 | datagram 總長 ≥ 22，且等於 `20 + payload_len + 2` | `BAD_LENGTH` |
+| 2 | `magic` 為 `0x5343`、`version` 為 `0x01` | `BAD_VERSION` |
+| 3 | CRC 相符 | `BAD_CRC` |
+| 4 | `payload_len` 與 `cmd_type` 規定的長度相符（見 §3） | `BAD_LENGTH` |
+| 5 | `seq` 大於已接受的最新值 | `STALE` |
+
+**第 1 項必須排在 CRC 之前**：CRC 的涵蓋範圍由 `payload_len` 決定。若先信任一個造假的 `payload_len` 再去算 CRC，會讀到 buffer 之外或算錯範圍。先用 datagram 的實際長度驗證 `payload_len` 自洽，其餘檢查才有意義。
+
+**第 4 項只有在 CRC 通過之後才抓得到**：`payload_len` 與 datagram 長度自洽、CRC 也正確，但長度與 `cmd_type` 規定的不符（例如 `JOINT` 只帶 4 bytes payload）。此時封包結構完好，內容卻無法解讀——這是 CRC 擋不掉的一類錯誤。
+
+**以上任何一項不過都不重置 watchdog**：§6.3 要求的是「合法封包」，未通過驗證的不算。與 §6.2 的 `STALE` 不重置 watchdog 同一個道理——收到 bytes 不等於對端正常運作。若橋接程式故障而持續送出壞封包，watchdog 應該要觸發。
+
+**本節為控制層內部行為，B 不需配合。**
+
 ## 3. 指令類型
 
 | 值 | 名稱 | payload | 本學期狀態 |
@@ -193,6 +213,8 @@ static uint64_t now_unix_us(void)
 | 20 | 4 | `j6` | int32 | 0.001 度 |
 
 關節編號 J1 為基座，往末端遞增。例：`j1 = 45000` 表示第一軸 45.000 度。
+
+**角度轉毫度的換算由發送端負責，建議四捨五入而非截斷**（理由見 §7 的註解）。若兩端以不同語言實作且要做逐值比對，注意 Python 的 `round()` 為銀行家捨入（半值取偶）、C 的 `lround()` 為半值遠離零；差異只出現在剛好落在半毫度的值上，對運動無影響，但會讓逐值比對出現 1 的差距。
 
 ### 4.2 `POSE`（0x02）— 24 bytes
 
@@ -243,6 +265,7 @@ C → B，埠 49201。**預設關閉**，僅在 bring-up 與延遲量測時啟�
 | `0x04` | `BAD_CRC` | CRC 不符 |
 | `0x05` | `BAD_VERSION` | `version` 或 `magic` 不符 |
 | `0x06` | `STALE` | `seq` 早於已接受的最新值，已丟棄 |
+| `0x07` | `BAD_LENGTH` | datagram 長度與 `payload_len` 不符，或 `payload_len` 與 `cmd_type` 規定的長度不符（見 §2.5） |
 
 ---
 
@@ -323,7 +346,11 @@ def build(cmd_type: int, seq: int, payload: bytes = b"") -> bytes:
     return body + struct.pack("<H", crc16_ccitt(body))
 
 def joint_payload(degrees) -> bytes:
-    return struct.pack("<6i", *(int(d * 1000) for d in degrees))
+    # 用 round() 而不是 int()：int() 向零截斷，而 1.001 * 1000 在浮點下
+    # 等於 1000.9999999999999，int() 會得到 1000；-1.001 度同理得 -1000。
+    # 誤差 0.001° 遠小於 STS3215 每步約 0.088°，對運動沒有影響，但會讓
+    # 兩端「送 X、收 X」的逐值比對測試失敗，而且看起來像接收端的錯。
+    return struct.pack("<6i", *(round(d * 1000) for d in degrees))
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 seq = 0
@@ -359,8 +386,12 @@ typedef struct {
 | v1.1 | 2026/11/04 | 新增 §2.4 明確規定 `timestamp_us` 的時鐘（Unix epoch 牆鐘 µs）、兩端的取法與禁用的 API、C 端 FILETIME 換算、本學期可量測範圍；§5 補明回應包不回傳原始時間戳；§7 範例改用 `time.time_ns()` 並加註不可替換的理由 |
 | v1.2 | 2026/11/05 | §2.1 註明 `magic` 的線上 bytes 為 `43 53`、須以 uint16 比對；§2.3 補 CRC 檢查值與 NOP 範例封包；§2.4 修正 v1.1 的錯誤說法（`time_ns()` 與 `time.time()` 時鐘相同，解析度取決於 Python 版本），改為規定 Windows 上 Python ≥ 3.13 或改用 ctypes，表格補上 LeRobot 版控制層；§6.2、§6.3 新增 STALE 不重置 watchdog、watchdog 逾時後清除 `seq` 基準；§7 註解同步修正 |
 
+| v1.3 | 2026/11/23 | §2.5 新增接收端的驗證順序與「長度檢查須排在 CRC 之前」的理由；§5 新增 `0x07 BAD_LENGTH`；§4.1 補角度換算的責任歸屬與跨語言捨入差異；§7 範例的 `int()` 改為 `round()`（`int()` 向零截斷，`1.001 * 1000` 在浮點下為 `1000.9999999999999`，送出的值會少 1） |
+
 變更此規格需同時通知 B。`version` 欄位用於不相容變更；相容的擴充使用 `reserved` 欄位或新增 `cmd_type`。
 
 > v1.1 為**相容性澄清**，封包格式未變，B 已開始的實作不需重寫；但 `timestamp_us` 的取法若與 §2.4 不符需修正，否則 W12 量不到延遲。
 >
 > v1.2 封包格式同樣未變。B 需要確認兩件事：橋接環境的 Python 版本（§2.4），以及 `magic` 是以 uint16 寫入而不是字串 `b"SC"`（§2.1）。§6.2 的變更只在控制層，B 不需配合。
+>
+> v1.3 封包格式未變。**B 若已照 §7 的舊範例以 `int()` 換算角度，請改成 `round()`**，否則所有「送 X、收 X」的逐值比對會差 1，而且看起來會像接收端解錯。§2.5 與 §5 的 `BAD_LENGTH` 屬控制層內部行為，B 不需配合，但 `payload_len` 必須與 `cmd_type` 規定的長度一致（§3）。
