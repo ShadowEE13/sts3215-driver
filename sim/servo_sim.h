@@ -75,6 +75,22 @@ enum {
 #define SIM_PHASE_SPEED0_MAX 0x08
 
 /*
+ * Phase 的出廠值依減速比而不同，但型號碼（0x03）都是 777，軟體分辨不出來，
+ * 只能看馬達標籤。來源：組裝前唯讀快照 snapshots/20261119_*-preassembly.json（12 顆全新馬達）
+ *   1:345（follower 全部、leader J2 的 C001）    12 = 0x0C（BIT2、BIT3）
+ *   1:191 / 1:147（leader 其餘的 C044、C046）    92 = 0x5C（BIT2、BIT3、BIT4、BIT6）
+ *
+ * sim_add_servo() 用 1:345 的值（驅動實際要控制的 follower）。要模擬 C044 / C046：
+ *     sim_add_servo(&bus, id);
+ *     sim_poke(&bus, id, SIM_ADDR_PHASE, SIM_PHASE_FACTORY_191_147);   // poke EPROM = 當成出廠值
+ *
+ * 兩者 BIT3 都是 1，所以出廠狀態下 Goal_Velocity = 0 是「最高速」，不是停止。
+ * 模擬器只看 BIT3；BIT2、BIT4、BIT6 只存值，不模擬。
+ */
+#define SIM_PHASE_FACTORY_345     12
+#define SIM_PHASE_FACTORY_191_147 92
+
+/*
  * 故障注入，直接改欄位即可，例：sim_find(&bus, 3)->fault.drop_next = 1;
  * 「回應」指這顆馬達本來會送出的一個 Status Packet（SYNC READ 時每顆各算一個）。
  */
@@ -119,7 +135,7 @@ sim_servo_t *sim_find(sim_bus_t *bus, uint8_t id);
 /*
  * 測試鉤子：模擬這顆馬達斷電再上電。
  *   - EPROM 區還原成 flash 裡保存的值（Lock = 1 時寫入的會消失）
- *   - SRAM 區回到上電預設值：扭矩關、Lock = 0、0x30 由 0x10 複製
+ *   - SRAM 區回到上電預設值：扭矩關、Lock = 1、0x30 由 0x10 複製
  *   - 當前位置保留（編碼器量的是實際角度），目標位置設成當前位置
  *   - 故障注入設定不受影響（那是測試環境，不是馬達的狀態）
  * 找不到 id 時不做事。

@@ -367,21 +367,25 @@ void sim_init(sim_bus_t *bus)
 }
 
 /*
- * EPROM 區的出廠值。有標來源的取自原廠記憶體表（docs/memory-table-check.md 第四節）；
- * 原廠表沒給、依版本而異的（電壓門檻、PID、保護電流…）維持 0，等 W10 真機快照。
+ * EPROM 區的出廠值。來源標在每一行：
+ *   原廠表  原廠記憶體表的初始值（docs/memory-table-check.md 第四節）
+ *   快照    組裝前唯讀快照（snapshots/20261119_*-preassembly.json，12 顆全新馬達）。
+ *           與原廠表、規格書衝突時以快照為準：實測勝過文件
+ * 其餘沒標的（電壓門檻、PID、保護電流…）維持 0。快照裡已有實測值，但依型號而異，
+ * 本學期沒有套用（見 sim/README.md）。
  */
 static void factory_eprom(sim_servo_t *s, uint8_t id)
 {
     put16(s, SIM_ADDR_MODEL, 777);
     s->table[SIM_ADDR_ID]            = id;
     s->table[SIM_ADDR_BAUD]          = 0;      /* 1 Mbps */
-    s->table[SIM_ADDR_RETURN_DELAY]  = 250;    /* 500 µs；模擬器不看，延遲用 hal_sim 的 latency_ms */
+    s->table[SIM_ADDR_RETURN_DELAY]  = 0;      /* 快照：12 顆皆 0（規格書寫 250 = 500 µs）。模擬器不看，延遲用 hal_sim 的 latency_ms */
     s->table[SIM_ADDR_STATUS_LEVEL]  = 1;
     put16(s, SIM_ADDR_MIN_LIMIT, 0);
     put16(s, SIM_ADDR_MAX_LIMIT, 4095);
     s->table[SIM_ADDR_MAX_TEMP]      = 70;     /* 原廠表 */
     put16(s, SIM_ADDR_MAX_TORQUE, 1000);
-    s->table[SIM_ADDR_PHASE]         = 0;      /* 原廠表沒給；BIT3 = 0 → 速度 0 = 停止，比較安全 */
+    s->table[SIM_ADDR_PHASE]         = SIM_PHASE_FACTORY_345;   /* 快照：1:345 為 12，BIT3 = 1 → 速度 0 = 最高速。C044 / C046 為 92，見 servo_sim.h */
     s->table[SIM_ADDR_UNLOAD_COND]   = 44;     /* 原廠表：過熱、過流、過載保護開 */
     s->table[SIM_ADDR_LED_ALARM]     = 47;     /* 原廠表 */
     s->table[SIM_ADDR_CW_DEADZONE]   = 1;      /* 原廠表 */
@@ -401,7 +405,7 @@ static void power_on_sram(sim_servo_t *s, uint16_t present)
 {
     memset(&s->table[SIM_EPROM_END], 0, SIM_TABLE_SIZE - SIM_EPROM_END);
     put16(s, SIM_ADDR_TORQUE_LIMIT, get16(s, SIM_ADDR_MAX_TORQUE));   /* 上電時由 0x10 複製 */
-    s->table[SIM_ADDR_LOCK] = 0;                                      /* 原廠表：上電預設 0 */
+    s->table[SIM_ADDR_LOCK] = 1;                                      /* 快照：12 顆上電皆為 1（原廠表寫 0，以實測為準） */
     put16(s, SIM_ADDR_PRESENT_POS, present);
     put16(s, SIM_ADDR_GOAL_POS, present);      /* 與當前位置相同：開扭矩不會突然跳動 */
     s->table[SIM_ADDR_VOLTAGE]     = 120;

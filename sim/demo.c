@@ -171,21 +171,22 @@ static void motion(void)
     hal_sim_advance(&hs, 100);
     CHECK_EQ(PEEK(1, SIM_ADDR_PRESENT_POS), 1948);
 
-    /* F-15：Lock 決定「EPROM 的值要不要存進 flash」，不是「能不能寫」 */
-    puts("  -- Lock = 1: EPROM write (max limit 0x0B) takes effect, lost on power cycle");
-    write_ok(1, SIM_ADDR_LOCK, (const uint8_t[]){1}, 1);
+    /* F-15：Lock 決定「EPROM 的值要不要存進 flash」，不是「能不能寫」。上電就是 1，不必先寫 */
+    puts("  -- Lock = 1 (power-on): EPROM write (max limit 0x0B) takes effect, lost on power cycle");
+    CHECK_EQ(PEEK(1, SIM_ADDR_LOCK), 1);
     write_ok(1, SIM_ADDR_MAX_LIMIT, (const uint8_t[]){0xB8, 0x0B}, 2);  /* 3000 */
     CHECK_EQ(PEEK(1, SIM_ADDR_MAX_LIMIT), 3000);
     sim_power_cycle(&bus, 1);
     CHECK_EQ(PEEK(1, SIM_ADDR_MAX_LIMIT), 4095);
 
-    puts("  -- after power cycle: Lock 0, torque off, position kept, goal = position");
-    CHECK_EQ(PEEK(1, SIM_ADDR_LOCK), 0);
+    puts("  -- after power cycle: Lock 1, torque off, position kept, goal = position");
+    CHECK_EQ(PEEK(1, SIM_ADDR_LOCK), 1);
     CHECK_EQ(PEEK(1, SIM_ADDR_TORQUE), 0);
     CHECK_EQ(PEEK(1, SIM_ADDR_PRESENT_POS), 1948);
     CHECK_EQ(PEEK(1, SIM_ADDR_GOAL_POS), 1948);
 
     puts("  -- Lock = 0: EPROM write survives power cycle; 0x30 copied from 0x10 at power-on");
+    write_ok(1, SIM_ADDR_LOCK, (const uint8_t[]){0}, 1);                /* 要永久保存，得先寫 0 */
     write_ok(1, SIM_ADDR_MAX_LIMIT, (const uint8_t[]){0xB8, 0x0B}, 2);  /* 3000 */
     write_ok(1, SIM_ADDR_MAX_TORQUE, (const uint8_t[]){0x20, 0x03}, 2); /* 800 */
     CHECK_EQ(PEEK(1, SIM_ADDR_TORQUE_LIMIT), 1000);                     /* 還沒重開，0x30 不變 */
@@ -193,6 +194,7 @@ static void motion(void)
     CHECK_EQ(PEEK(1, SIM_ADDR_MAX_LIMIT), 3000);
     CHECK_EQ(PEEK(1, SIM_ADDR_MAX_TORQUE), 800);
     CHECK_EQ(PEEK(1, SIM_ADDR_TORQUE_LIMIT), 800);
+    CHECK_EQ(PEEK(1, SIM_ADDR_LOCK), 1);                                /* Lock 在 SRAM：重開又回到 1 */
 
     puts("  -- 0x32-0x36 undefined: write ignored; 0x31 (high byte of 0x30) writable (F-16)");
     write_ok(1, 0x32, (const uint8_t[]){0x55}, 1);
@@ -220,25 +222,33 @@ static void motion(void)
     size_t elen  = pkt(exp, 1, 0x00, (const uint8_t[]){0xB8, 0x0B}, 2);
     expect_reply(tx, txlen, exp, elen);
 
-    /* F-17：Goal_Velocity = 0 是停止還是最高速，由 Phase（0x12）BIT3 決定 */
-    puts("  -- speed 0, Phase BIT3 = 0 (default): does not move");
+    /*
+     * F-17：Goal_Velocity = 0 是停止還是最高速，由 Phase（0x12）BIT3 決定。
+     * 出廠 Phase = 12（0x0C）的 BIT3 是 1，所以出廠狀態下速度 0 = 最高速
+     */
+    puts("  -- speed 0, Phase = 12 (factory, BIT3 = 1): moves at SIM_MAX_SPEED (3000 step/s)");
     write_ok(1, SIM_ADDR_GOAL_POS,                                      /* 位置 2000、時間 0、速度 0 */
              (const uint8_t[]){0xD0, 0x07, 0x00, 0x00, 0x00, 0x00}, 6);
     hal_sim_advance(&hs, 100);
-    CHECK_EQ(PEEK(1, SIM_ADDR_PRESENT_POS), 3000);
-    CHECK_EQ(PEEK(1, SIM_ADDR_MOVING), 0);
-
-    puts("  -- speed 0, Phase BIT3 = 1: moves at SIM_MAX_SPEED (3000 step/s)");
-    write_ok(1, SIM_ADDR_PHASE, (const uint8_t[]){SIM_PHASE_SPEED0_MAX}, 1);
-    hal_sim_advance(&hs, 100);
     CHECK_EQ(PEEK(1, SIM_ADDR_PRESENT_POS), 2700);
     CHECK_EQ(PEEK(1, SIM_ADDR_PRESENT_SPD), 0x8000 | SIM_MAX_SPEED);
+
+    puts("  -- speed 0, Phase BIT3 cleared (0x0C -> 0x04): stops");
+    write_ok(1, SIM_ADDR_PHASE, (const uint8_t[]){0x04}, 1);
+    hal_sim_advance(&hs, 100);
+    CHECK_EQ(PEEK(1, SIM_ADDR_PRESENT_POS), 2700);
+    CHECK_EQ(PEEK(1, SIM_ADDR_MOVING), 0);
 }
 
-/* 上電預設值：預期值照抄 docs/memory-table-check.md 第四節（原廠記憶體表的初始值） */
+/*
+ * 上電預設值。預期值照抄外部來源，不從模擬器程式反推：
+ *   原廠表  docs/memory-table-check.md 第四節（原廠記憶體表的初始值）
+ *   快照    snapshots/20261119_*-preassembly.json（組裝前唯讀快照，12 顆全新馬達）
+ * 兩者衝突的 0x07、0x12、0x37 以快照為準。
+ */
 static void defaults(void)
 {
-    puts("== Power-on defaults (vendor memory table)");
+    puts("== Power-on defaults (vendor memory table + pre-assembly snapshot)");
     reset_bus(1);
     CHECK_EQ(PEEK(1, SIM_ADDR_MODEL), 777);
     CHECK_EQ(PEEK(1, SIM_ADDR_MAX_TEMP), 70);
@@ -251,9 +261,11 @@ static void defaults(void)
     CHECK_EQ(PEEK(1, SIM_ADDR_PROT_TIME), 200);
     CHECK_EQ(PEEK(1, SIM_ADDR_OVLD_TORQUE), 80);
     CHECK_EQ(PEEK(1, SIM_ADDR_OC_TIME), 200);
-    CHECK_EQ(PEEK(1, SIM_ADDR_LOCK), 0);
-    CHECK_EQ(PEEK(1, SIM_ADDR_PHASE), 0);      /* 原廠表沒給，模擬器的選擇（V-14） */
-    CHECK_EQ(PEEK(1, SIM_ADDR_TORQUE), 0);
+    CHECK_EQ(PEEK(1, SIM_ADDR_RETURN_DELAY), 0);   /* 快照：12 顆皆 0（規格書寫 250） */
+    CHECK_EQ(PEEK(1, SIM_ADDR_LOCK), 1);           /* 快照：12 顆皆 1（原廠表寫 0） */
+    CHECK_EQ(PEEK(1, SIM_ADDR_PHASE), 12);         /* 快照：1:345 的 7 顆皆 12 */
+    CHECK_EQ(SIM_PHASE_FACTORY_191_147, 92);       /* 快照：1:191 / 1:147 的 5 顆皆 92 */
+    CHECK_EQ(PEEK(1, SIM_ADDR_TORQUE), 0);         /* 快照：12 顆皆 0 */
 }
 
 static void sync_ops(void)
