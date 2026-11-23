@@ -2,6 +2,8 @@
 
 C/C++ 低階串列通訊驅動，用於 VR 遠端遙操作機械手臂的伺服馬達控制層。繞過官方 LeRobot 的 Python 封裝，直接依照 Feetech STS3215 通訊協定手刻封包、收發與安全限位邏輯。
 
+> **本學期停在「PC 端協定驗證」**：驅動尚未在真機上執行，見[本學期範圍與停止點](#本學期範圍與停止點)。
+
 ## Background
 
 這是 NYCU MIRAI Lab 數位孿生專題的子題目：透過 VR、視覺偵測與機械手臂實現遠端同步操作。本 repo 負責 PC 端到手臂的底層通訊與控制層，目標是建立一份可直接作為嵌入式系統作品集的驅動程式碼，之後視進度移植至 STM32。
@@ -59,8 +61,11 @@ HAL           序列埠抽象（PC: termios/Win32 → STM32: UART + DMA → sim:
 ## Build
 
 ```sh
-make            # 建置驅動層與範例
-make sim        # 建置虛擬馬達模擬器與 demo
+make test        # 編譯並執行全部測試，含驗收 A（sim/demo.c）
+make demo        # 只跑模擬器自我驗證，印出收送的每個 byte
+make layers      # 分層檢查：src/ 不得引用 sim/ 或平台 API
+make SAN=1 test  # 加上 AddressSanitizer + UBSan
+make clean && make CC=clang test   # 用 clang 再編一次：-Wconversion 的檢查範圍與 gcc 不同
 ```
 
 ### 開發規範
@@ -73,24 +78,42 @@ Protocol 與 Device 兩層之後要搬上 MCU，因此全程採 MCU 友善寫法
 - 不依賴作業系統概念（執行緒、檔案系統、動態載入）
 - header 一律加上 `extern "C"` 包裝
 
-## Project status
+## 本學期範圍與停止點
 
-🚧 In progress — 目前階段：協定研讀完成，進入封包驗證與 C 實作
+**停止點：PC 端協定驗證**（2026/11/15，C-26）。驅動**還沒有在真機上執行過**：本學期的驗證全部在 PC 上完成，對照的是協定手冊與模擬器。
 
-| 階段 | 週次 | 狀態 |
+### 做到哪裡
+
+| 項目 | 狀態 | 怎麼驗證 |
 |---|---|---|
-| 協定研讀 | W5 | ✅ 完成 |
-| 手臂跑起來 + 介面凍結 | W6 | 進行中 |
-| 單軸讀寫 | W7 | 未開始 |
-| 單軸完成 + 六軸擴展 | W8–10 | 未開始 |
-| 上層封包 + 安全層 + 延遲量測 | W11–13 | 未開始 |
-| STM32 移植（條件性） | W14–16 | 未開始 |
+| HAL 介面 `include/sts_hal.h` | 完成 | 函式表 + `ctx`，設計理由寫在 header 註解；`tests/test_hal.c` |
+| 虛擬 STS3215 模擬器 `sim/` | 完成 | Control Table、PING / READ / WRITE / SYNC READ / SYNC WRITE、故障注入、虛擬時鐘 |
+| 驗收 A：手冊範例封包 → 模擬器 | ✅ 通過（tag `accept-A`） | 手冊 4.1–4.3 的回應逐 byte 相同（`sim/demo.c`） |
+| 驗收 B：驅動組包 vs 手冊 | ✅ 通過（tag `accept-B`） | 同上三包逐 byte 相同；另做反向驗證（故意寫錯 checksum，測試會失敗）與 Python 獨立重寫對照 |
+| Protocol 層組包、Device 層 sign-magnitude 與 little-endian | 完成 | `tests/test_protocol.c`、`tests/test_device.c` |
+| 測試 | 876 項全過 | gcc / clang 在 `-Werror -Wconversion` 下零警告，ASan + UBSan 無錯誤 |
 
-**硬承諾**：10/25（W7 結束）前完成單軸 READ / WRITE。其餘項目依進度彈性調整。
+模擬器的出廠預設值以組裝前的唯讀快照（`snapshots/20261119_*-preassembly.json`，12 顆全新馬達）為準，與規格書或原廠記憶體表不同的地方以實測為準：`0x07` = 0、Phase `0x12` = 12（1:345）或 92（1:191、1:147）、Lock `0x37` 上電為 1。
 
-**W13 判斷點**：六軸穩定運行 10 分鐘不掉封包，且 HAL 層確實分離，才進入 STM32 移植；未通過則轉向鞏固 PC 版（補測試、補文件）。
+### 為什麼停在這裡
 
-硬體現況：leader 與 follower 皆已借到並組裝完成，惟全實驗室僅一組且採預約制，因此開發分為「需真機」與「可離線」兩軌，後者以模擬器支撐。STM32 開發板已取得。
+- 本學期改以 Python 建立可對接的系統為主線（C-25），伺服機通訊先交給 LeRobot。上層介面 [`docs/interface-spec.md`](docs/interface-spec.md) 不受影響，隊友那端無感
+- 剩下的步驟全都依賴收包狀態機，而它需要先補 C 的基礎（指標與陣列、位元運算、`switch` 與 enum、用 struct 保存狀態）。所以整條路線一起移到下學期，不留做到一半的待辦
+- 停在這裡是一個完整的階段：「協定理解正確」已經有兩道對照手冊的外部證據，A 從模擬器那側、B 從驅動這側，兩者都不是拿彼此當參照
+
+### 移到下學期
+
+| 步驟 | 內容 | 依賴 |
+|---|---|---|
+| 6 | 收包狀態機 + 驗收 C（手冊回應包 → 驅動解析） | C 的先備知識 |
+| 7 | 單軸 API `sts_ping` / `sts_read` / `sts_write` + 驗收 D（驅動 ↔ 模擬器） | 6 |
+| 8–9 | 逾時與重傳、錯誤碼解析 | 6 |
+| 10–11 | 故障注入的驅動側測試、SYNC READ / SYNC WRITE 驅動側 | 6、7 |
+| — | `src/hal_win32.c`、真機 bring-up | 以上全部 |
+
+**下學期從這裡接**：[`docs/week06-08-plan.md`](docs/week06-08-plan.md) 步驟 6。演算法（`docs/LeRobot-notes.md` 第 5 節）、測資（驗收 C 的五項）、模擬器與故障注入都已就緒。驗收 D 只證明驅動與模擬器彼此同意，不能取代 A / B / C。
+
+時程與決策紀錄見 [`docs/schedule.md`](docs/schedule.md) 與 [`docs/lab-log/week10.md`](docs/lab-log/week10.md) 第三節。
 
 ## Repo structure
 
@@ -100,8 +123,10 @@ ppt/          每週報告與紀錄
 include/      對外 header（含 HAL 介面定義）
 src/          驅動層原始碼
 sim/          虛擬 STS3215 模擬器（離線開發與回歸測試用）
-examples/     單軸 / 六軸操作範例
 tests/        封包驗證、邊界測試
+pyctrl/       Python 控制系統（本學期主線）
+tools/        真機工具（唯讀暫存器快照等）
+snapshots/    真機暫存器快照與截圖
 ```
 
 ### docs/
