@@ -407,7 +407,7 @@ static void power_on_sram(sim_servo_t *s, uint16_t present)
     put16(s, SIM_ADDR_TORQUE_LIMIT, get16(s, SIM_ADDR_MAX_TORQUE));   /* 上電時由 0x10 複製 */
     s->table[SIM_ADDR_LOCK] = 1;                                      /* 快照：12 顆上電皆為 1（原廠表寫 0，以實測為準） */
     put16(s, SIM_ADDR_PRESENT_POS, present);
-    put16(s, SIM_ADDR_GOAL_POS, present);      /* 與當前位置相同：開扭矩不會突然跳動 */
+    put16(s, SIM_ADDR_GOAL_POS, 0);            /* 快照：12 顆上電皆為 0，不是當前位置（F-49）。沒先寫目標就開扭矩會衝向 0，見 sim/README.md */
     s->table[SIM_ADDR_VOLTAGE]     = 120;
     s->table[SIM_ADDR_TEMPERATURE] = 25;
     s->frac = 0;

@@ -91,9 +91,9 @@ Protocol 與 Device 兩層之後要搬上 MCU，因此全程採 MCU 友善寫法
 | 驗收 A：手冊範例封包 → 模擬器 | ✅ 通過（tag `accept-A`） | 手冊 4.1–4.3 的回應逐 byte 相同（`sim/demo.c`） |
 | 驗收 B：驅動組包 vs 手冊 | ✅ 通過（tag `accept-B`） | 同上三包逐 byte 相同；另做反向驗證（故意寫錯 checksum，測試會失敗）與 Python 獨立重寫對照 |
 | Protocol 層組包、Device 層 sign-magnitude 與 little-endian | 完成 | `tests/test_protocol.c`、`tests/test_device.c` |
-| 測試 | 876 項全過 | gcc / clang 在 `-Werror -Wconversion` 下零警告，ASan + UBSan 無錯誤 |
+| 測試 | 881 項全過 | gcc / clang 在 `-Werror -Wconversion` 下零警告，ASan + UBSan 無錯誤 |
 
-模擬器的出廠預設值以組裝前的唯讀快照（`snapshots/20261119_*-preassembly.json`，12 顆全新馬達）為準，與規格書或原廠記憶體表不同的地方以實測為準：`0x07` = 0、Phase `0x12` = 12（1:345）或 92（1:191、1:147）、Lock `0x37` 上電為 1。
+模擬器的出廠預設值以組裝前的唯讀快照（`snapshots/20261119_*-preassembly.json`，12 顆全新馬達）為準，與規格書或原廠記憶體表不同的地方以實測為準：`0x07` = 0、Phase `0x12` = 12（1:345）或 92（1:191、1:147）、Lock `0x37` 上電為 1、目標位置 `0x2A` 上電為 0（不是當前位置）。
 
 ### 為什麼停在這裡
 

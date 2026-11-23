@@ -179,11 +179,11 @@ static void motion(void)
     sim_power_cycle(&bus, 1);
     CHECK_EQ(PEEK(1, SIM_ADDR_MAX_LIMIT), 4095);
 
-    puts("  -- after power cycle: Lock 1, torque off, position kept, goal = position");
+    puts("  -- after power cycle: Lock 1, torque off, position kept, goal back to 0");
     CHECK_EQ(PEEK(1, SIM_ADDR_LOCK), 1);
     CHECK_EQ(PEEK(1, SIM_ADDR_TORQUE), 0);
     CHECK_EQ(PEEK(1, SIM_ADDR_PRESENT_POS), 1948);
-    CHECK_EQ(PEEK(1, SIM_ADDR_GOAL_POS), 1948);
+    CHECK_EQ(PEEK(1, SIM_ADDR_GOAL_POS), 0);
 
     puts("  -- Lock = 0: EPROM write survives power cycle; 0x30 copied from 0x10 at power-on");
     write_ok(1, SIM_ADDR_LOCK, (const uint8_t[]){0}, 1);                /* 要永久保存，得先寫 0 */
@@ -266,6 +266,16 @@ static void defaults(void)
     CHECK_EQ(PEEK(1, SIM_ADDR_PHASE), 12);         /* 快照：1:345 的 7 顆皆 12 */
     CHECK_EQ(SIM_PHASE_FACTORY_191_147, 92);       /* 快照：1:191 / 1:147 的 5 顆皆 92 */
     CHECK_EQ(PEEK(1, SIM_ADDR_TORQUE), 0);         /* 快照：12 顆皆 0 */
+    CHECK_EQ(PEEK(1, SIM_ADDR_GOAL_POS), 0);       /* 快照：12 顆皆 0，不是當前位置（F-49） */
+
+    /*
+     * 上電後沒寫目標就開扭矩：目標 0、速度 0、Phase BIT3 = 1 → 全速衝向 0。
+     * 真機韌體會不會在開扭矩時把目標改成當前位置，手冊沒寫；模擬器刻意選最壞情況（待真機驗證）
+     */
+    puts("  -- torque on right after power-on, goal never written: rushes toward 0 at full speed");
+    write_ok(1, SIM_ADDR_TORQUE, (const uint8_t[]){1}, 1);
+    hal_sim_advance(&hs, 100);
+    CHECK_EQ(PEEK(1, SIM_ADDR_PRESENT_POS), 1748);  /* 2048 − 3000 步/s × 0.1 s */
 }
 
 static void sync_ops(void)
