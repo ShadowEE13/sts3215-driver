@@ -7,3 +7,7 @@ build/
 *.o
 *.exe
 demo
+
+# Python
+__pycache__/
+*.pyc
