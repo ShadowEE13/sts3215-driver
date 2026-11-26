@@ -264,7 +264,7 @@ GPIO_CLEAR(DIR_PIN);                        /* 切回接收 */
 
 ## 8. 安全層放哪一層、哪一端　【下學期重新面對】
 
-**本學期已定**：安全層在 PC 端，以 Python 實作（C-25）。軟體限位、單步幅度限制、error byte 監控、watchdog、急停都在那一支程式裡。這是相對於 LeRobot 的實質貢獻（`LeRobot-notes.md` §8）。
+**本學期已定**：安全層在 PC 端，以 Python 實作（C-25）。軟體限位、單步幅度限制、error byte 監控、watchdog、急停都在那一支程式裡。這是相對於 LeRobot 的實質貢獻（`LeRobot-notes.md` §8）——精確的說法是 LeRobot 讀得到警報但不處理，交給上層決定，而 `max_relative_target` 預設不開（F-31 修正了早期「它沒檢查」的說法）。
 
 **但下學期移植時這個位置會被重新檢討**，當初定分層時討論過的兩個方向記在這裡：
 
@@ -296,7 +296,7 @@ GPIO_CLEAR(DIR_PIN);                        /* 切回接收 */
 
 模擬器是測試基礎設施，不是交付的驅動本體，但它應該在 repo 裡：
 
-- LeRobot 自己就有同樣的東西（`tests/mocks/mock_feetech.py`）
+- LeRobot 在 commit `8c920c4`（2026-10-03）時有同樣的東西：`tests/mocks/mock_feetech.py`，不靠真實 SDK 自己手組每一種封包。該版本之後後端換成 rustypot，`scservo_sdk` 相關的東西（含這個 mock）可能已不存在（F-30），所以這條引用僅代表當時的觀察，不描述 LeRobot 現況
 - §4 的第一條自我檢驗——「Protocol 層能否脫離硬體測試」——沒有它就只是嘴上說說
 - 它能注入真機難以製造的故障：不回應、錯誤 checksum、強制 error byte、雜訊
 - 本學期 872 項測試與驗收 A/B 全部建立在它之上
