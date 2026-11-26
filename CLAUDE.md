@@ -30,7 +30,8 @@ NYCU 電機系大三專題子題目：以純 C11 手寫 Feetech STS3215 伺服�
 - 編譯：**MSYS2 UCRT64** 終端機，`gcc` + `make`
 - git：Git for Windows（已加進 UCRT64 的 PATH）
 - repo 路徑：`C:\GithubRepo\sts3215-driver`（UCRT64 內為 `/c/GithubRepo/sts3215-driver`）
-- checkout 為 CRLF（`core.autocrlf`）。不要大量轉換換行，避免整檔 diff
+- 換行一律 LF（`.gitattributes` 規定 `eol=lf`）。不要大量轉換換行，避免整檔 diff
+- 從零設定的步驟與每個「不要」的理由見 `docs/dev-setup.md`
 
 ```
 make test      # 編譯並執行 tests/test_*.c
