@@ -7,9 +7,17 @@
 NYCU 電機系大三專題子題目：以純 C11 手寫 Feetech STS3215 伺服馬達的串列通訊驅動，用於 VR 遙操作機械手臂（SO-ARM101，6 軸，leader 7.4V / follower 12V）。
 
 - 協定細節：`docs/protocol-notes.md`、`docs/LeRobot-notes.md`
+- 分層架構與設計理由：`docs/architecture.md`
 - 模擬器規格：`docs/sim-spec.md`
-- **目前的工作計畫：`docs/week06-08-plan.md`**（步驟 0–11，依序執行）
 - 總時程：`docs/schedule.md`
+
+### 目前狀態（2026/11，W10 方向調整後）
+
+**C 驅動本學期已收尾**（C-26）。停止點是驗收 A/B 與模擬器，也就是「PC 端協定驗證」，不是真機驅動。`docs/week06-08-plan.md` 的步驟 6–11——收包狀態機、驗收 C/D、單軸 API、逾時與重傳、錯誤碼解析、SYNC 驅動側、`hal_win32.c`——全部移至下學期。接手前先讀 `docs/lab-log/week10.md` 第三節的收尾範圍表。
+
+**本學期主線改為 Python**（C-25）。`pyctrl/` 底下實作 `docs/interface-spec.md` 的接收端，伺服機後端用 LeRobot。
+
+本檔的硬性規範（純 C11、不用 `malloc`、分層檢查等）**只約束 `src/`、`sim/`、`tests/` 的 C 程式碼**，不適用於 `pyctrl/` 與 `tools/` 的 Python。
 
 ## 分工
 
@@ -33,11 +41,25 @@ make SAN=1 test  # ASan + UBSan（MSYS2 若不支援則略過，並告知使用�
 
 `tests/check.h` 是現成的測試框架（`CHECK`、`CHECK_EQ`、`CHECK_BYTES`、`CHECK_SUMMARY`）。新增 `tests/test_xxx.c` 會被 `make test` 自動抓到，不需改 Makefile。
 
+Python 在 MSYS2 bash 裡不在 PATH 上，需要跑 `tools/` 或 `pyctrl/` 的腳本時改用 Miniforge Prompt（`conda activate lerobot`）。
+
+## 檔案歸屬與命名
+
+- **`datasheet/` 唯讀**。裡面是原廠的規格書、協定手冊、記憶體表，不編輯、不整理、不改名，保持拿到時的原樣。自己消化後寫的東西一律進 `docs/`
+
+  理由：本專題至今抓到六處原廠文件的錯誤（F-02、F-15、F-16、F-17、F-22、F-26）。每一次都要能分辨「原廠是這樣寫的」和「我抄錯了」，兩邊混在一起就查不出來
+
+- **二進位檔案一律放 repo**。PDF、xlsx、圖片、簡報不要試圖寫進 Claude Project 的文件庫——那裡只收純文字，含 NUL byte 的檔案會被拒絕。Project 裡只留指向 repo 路徑的參照
+
+- **新增檔案或資料夾時避開 `capstone`、`project`、`nycu` 這類字樣**。這個 repo 會跟著進履歷與面試，`sts3215-driver` 讀起來是一個驅動程式，`nycu-capstone-2026` 讀起來是一份作業。內容一樣，預期不同
+
 ## 硬性規範（不可違反）
+
+適用範圍：`src/`、`sim/`、`tests/`。
 
 - 純 C11；`-Wall -Wextra -Werror -Wconversion` 零警告
 - **不使用 `malloc`**；buffer 一律靜態配置或由呼叫者提供
-- `src/` 不依賴作業系統。唯一例外是 PC 端 HAL 實作（W10 才寫，Windows 版將為 `src/hal_win32.c`）
+- `src/` 不依賴作業系統。唯一例外是 PC 端 HAL 實作（Windows 版為 `src/hal_win32.c`，已依 C-26 移至下學期）
 - **Protocol 層零全域變數**；所有狀態放在呼叫者提供的 struct（leader / follower 兩條 bus 要能同時存在）
 - 所有 header 加 `extern "C"` 包裝
 - 時間比較一律 `(uint32_t)(now - start) >= timeout`（處理溢位）
@@ -59,6 +81,8 @@ make SAN=1 test  # ASan + UBSan（MSYS2 若不支援則略過，並告知使用�
    理由：函式表是 `const`，在 STM32 上可放進 flash；leader 與 follower 共用同一張函式表，各自帶不同的 `ctx`。這也是 Linux kernel `struct file_operations` 的模式
 6. **回傳型別**：`write` / `read` 回傳 `int`（實際送出/讀到的 byte 數，`< 0` 代表錯誤），長度參數用 `size_t`。Length 欄位只有 1 byte，整包最長 4 + 255 = 259 bytes（SDK 合理性檢查更限制 Length ≤ 250），遠小於 `INT_MAX`，轉型安全；在 header 註解說明這個前提
 
+分層的完整界定、三條邊界規則與移植時各層的命運見 `docs/architecture.md`。
+
 ## 模擬器與驅動的獨立性（最重要的規則）
 
 模擬器（`sim/`）與驅動（`src/`）都由你撰寫，同一份對協定的誤解可能同時出現在兩邊、互相吻合而不被發現。因此：
@@ -67,18 +91,18 @@ make SAN=1 test  # ASan + UBSan（MSYS2 若不支援則略過，並告知使用�
 - 模擬器的 parser 刻意寫得簡單直白，不要「重用」驅動的 parser
 - **驗收用的封包一律逐 byte 照抄 `docs/protocol-notes.md` 第 4 節**，寫成常數陣列。**不可**用受測程式碼產生預期值
 - 驗收順序：A（手冊 → 模擬器）→ B（驅動組包 vs 手冊）→ C（手冊回應 → 驅動解析）→ D（驅動 ↔ 模擬器）。D 不能取代 A/B/C
-- RESET 範例：手冊印 `F6`，正確為 `F2`（已驗證），測試以 `F2` 為準
+- RESET 範例：手冊印 `F6`，正確為 `F2`（已驗證，驗算腳本見 `tools/verify.py`），測試以 `F2` 為準
 
 ## 工作流程
 
-1. 一次只做 `docs/week06-08-plan.md` 的**一個步驟**
+1. 一次只做一個步驟
 2. 完成後執行 `make test` 與 `make layers`，全部通過才算完成
 3. 停下來，給使用者一段簡短摘要：
    - 做了什麼、新增或修改了哪些檔案
    - **在模擬器上自行決定、需要真機驗證的行為**（列成「待真機驗證」項目）
    - 建議的 commit message
-4. **不要自行 commit 或 push**。由使用者確認後執行，commit message 格式為 `step N: 簡述`
-5. 在 `docs/week06-08-plan.md` 把完成的 checkbox 打勾
+4. **不要自行 commit 或 push**。由使用者確認後執行
+5. 把完成的 checkbox 打勾
 
 ## 何時要停下來問使用者
 
@@ -91,6 +115,6 @@ make SAN=1 test  # ASan + UBSan（MSYS2 若不支援則略過，並告知使用�
 
 ## 不要做的事
 
-- 不要寫需要真機的東西（`hal_win32.c`、LeRobot 相關），那是 W10 的工作
-- 不要修改 `docs/schedule.md`、`docs/lab-log/`、`docs/protocol-notes.md`、`docs/LeRobot-notes.md`（使用者的紀錄）；發現筆記有誤時，告知使用者
+- 不要寫需要真機的 C 程式碼（`hal_win32.c`、真機 bring-up）。依 C-26 已移至下學期，本學期不碰
+- 不要修改 `docs/schedule.md`、`docs/lab-log/`、`docs/protocol-notes.md`、`docs/LeRobot-notes.md`、`docs/architecture.md`（使用者的紀錄）；發現筆記有誤時，告知使用者
 - 不要引入第三方函式庫或測試框架
