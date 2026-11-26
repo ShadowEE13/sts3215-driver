@@ -160,7 +160,7 @@ repo 在 C:\GithubRepo\sts3215-driver。
   校正檔在 C:\Users\eason\.cache\huggingface\lerobot\calibration\
   robots\so_follower\my_follower.json
 
-尚未完成：leader 組裝與 calibrate、follower gripper 範圍確認
+尚未完成：follower gripper 範圍確認（leader 組裝與 calibrate 已於 W12 完成）
 （MIN 剛好 2047 = 中點，可能沒錄到閉合端）、lerobot-teleoperate 連動測試。
 
 安全規則：
