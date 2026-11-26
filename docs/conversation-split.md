@@ -1,8 +1,8 @@
 # AI 協作的對話分工
 
-**版本**：v1.2
+**版本**：v1.3
 **日期**：2026/11/27
-**相關**：C-13（程式碼由 AI 撰寫、本人理解與決策）、C-30（`main` 被遺忘）、C-32（工具未進版控）
+**相關**：C-13（程式碼由 AI 撰寫、本人理解與決策）、C-30（`main` 被遺忘）、C-32（工具未進版控）、C-42（防護規則隨改名過期）
 
 本文件規定多個 AI 對話並行時的範圍、檔案擁有權與防撞規則，並附可直接複製的交接訊息。
 
@@ -235,8 +235,14 @@ repo 在 C:\GithubRepo\sts3215-driver。
 開場請先讀這些定位，不要依賴我的描述：docs/lab-log/week10.md 第三節
 （C 驅動的收尾範圍與停止點）、docs/week06-08-plan.md（步驟與驗收 A–D，
 頂部有狀態說明）、docs/protocol-notes.md、docs/sim-spec.md、
-docs/memory-table-check.md、include/sts_hal.h 的註解（HAL 設計決策）。
+docs/memory-table-check.md、include/sts_hal.h 的註解（HAL 設計決策）、
+docs/dev-setup.md（MSYS2 與 git 從零設定）、
+docs/learning/c-01-hal-protocol.md（我對 HAL 與協定編碼的理解確認）。
 repo 在 C:\GithubRepo\sts3215-driver。
+
+接手的第一件事是跑 make strict：它會加嚴警告，並用 C++ 編譯器逐一
+include 每個 header 確認 extern "C" 仍然有效。休眠一個學期之後，
+先確定既有的東西還編得過，再開始改。
 
 範圍：src/、sim/、include/、tests/、week06-08-plan.md。
 
@@ -260,7 +266,11 @@ repo 在 C:\GithubRepo\sts3215-driver。
   失去互相驗證的意義（C-13 的風險因應）
 - 驗收 A/B/C 的預期值一律逐 byte 照抄手冊，不可從程式反推
 - 驗收 D（驅動 ↔ 模擬器）只證明兩邊彼此同意，不可取代 A/B/C
-- make layers 檢查 src/ 不得出現 sim/ 與平台 API
+- make layers 檢查 src/ 不得出現 sim/ 與平台 API（含 windows.h）；
+  唯一豁免是 src/hal_win32.c
+- sts_sm_encode 對超出範圍的值是靜默截斷，不回報錯誤。安全層必須在
+  編碼前擋下超範圍指令，不可把截斷當成保護（見 include/sts_device.h
+  的註解，以及 week06-08-plan.md 驗收 B 之後的「已知限制」）
 - 4 格縮排
 
 下學期要補的先備知識（不急）：C 的指標與陣列、位元運算（含為什麼
