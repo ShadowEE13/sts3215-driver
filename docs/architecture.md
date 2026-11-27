@@ -284,7 +284,7 @@ GPIO_CLEAR(DIR_PIN);                        /* 切回接收 */
 
 ### 9.1　`src/` 保持純 C，`examples/` 與 `tests/` 不限　【已實作】
 
-`src/` 底下的四層一律純 C11，因為 Protocol 與 Device 要搬到 MCU。寫法慣例與編譯旗標見 `CLAUDE.md`；`-Wconversion` 的選用理由見 F-21。
+`src/` 底下的四層一律純 C11，因為 Protocol 與 Device 要搬到 MCU。寫法慣例與編譯旗標見 `conventions.md`；`-Wconversion` 的選用理由見 F-21。
 
 `examples/` 與 `tests/` 的工具程式——序列埠監聽、延遲量測、資料畫圖——用什麼寫都可以，那些不會移植。本學期的 Python 對照驗證就屬於這一類。
 
@@ -309,7 +309,7 @@ GPIO_CLEAR(DIR_PIN);                        /* 切回接收 */
 |---|---|
 | 四層界定的原始出處 | `docs/lab-log/week05.md` |
 | HAL 介面的定案版本（函式表 + `ctx`） | `include/sts_hal.h`、C-14（`docs/lab-log/week09a.md`） |
-| 程式碼慣例、編譯旗標、MCU 友善寫法 | `CLAUDE.md`（repo 根目錄） |
+| 程式碼慣例、編譯旗標、MCU 友善寫法 | `conventions.md` |
 | `-Wconversion` 的選用理由 | F-21 |
 | `hal_write()` 語意在 Windows 的驗證 | V-16（`docs/verification-list.md`） |
 | C 驅動的停止點與下學期接續入口 | `docs/lab-log/week10.md` §3、`README.md` |

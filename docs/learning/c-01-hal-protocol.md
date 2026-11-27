@@ -17,7 +17,7 @@
 
 ## 一、函式表與 `ctx`
 
-**在哪裡**：`include/sts_hal.h` 的 `hal_ops_t`、`sts_hal_t`；設計決策 4、5（`CLAUDE.md`）
+**在哪裡**：`include/sts_hal.h` 的 `hal_ops_t`、`sts_hal_t`；設計決策 4、5（`../conventions.md` §4）
 
 **重點**
 - 函式表裡只有程式、沒有狀態；狀態全部在 `ctx`

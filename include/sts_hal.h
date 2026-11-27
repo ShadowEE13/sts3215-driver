@@ -19,7 +19,7 @@
  *
  *   用 designated initializer（.write = ...）指名欄位：欄位順序以後調整也不會接錯。
  *
- * 設計決定（改之前先想清楚會不會動到 Protocol 層；完整紀錄見 CLAUDE.md）：
+ * 設計決定（改之前先想清楚會不會動到 Protocol 層；完整紀錄見 docs/conventions.md）：
  *
  *   1. read 非阻塞：有多少回多少，沒有就回 0。
  *      逾時判斷統一放 Protocol 層，用 millis() 計時——只寫一次，三種 HAL 共用。
