@@ -27,9 +27,18 @@ C/C++ 低階串列通訊驅動，用於 VR 遠端遙操作機械手臂的伺服�
 
 **FTDI AN232B-04** — USB 轉序列晶片為排程輪詢而非中斷驅動，且需緩衝區滿 62 bytes 或 latency timer 逾時才回傳主機，預設 16 ms。
 
-**套用到本系統**：一個遙操作週期為 SYNC READ + 六個回應包 + SYNC WRITE，共 88 bytes，1 Mbps 下是 0.88 ms。但若回應延遲暫存器 `0x07` 維持出廠預設 500 µs，六顆即佔 3 ms（週期的 77%），頻率掉至 260 Hz；而單次六軸 SYNC READ 僅回 48 bytes，低於 62 bytes 門檻，每次讀取都會撞上 latency timer——預設 16 ms 時頻率上限僅 50–60 Hz。
+**套用到本系統（量測前的推算）**：一個遙操作週期為 SYNC READ + 六個回應包 + SYNC WRITE，共 88 bytes，1 Mbps 下是 0.88 ms。但若回應延遲暫存器 `0x07` 維持出廠預設 500 µs，六顆即佔 3 ms（週期的 77%），頻率掉至 260 Hz；而單次六軸 SYNC READ 僅回 48 bytes，低於 62 bytes 門檻，每次讀取都會撞上 latency timer——預設 16 ms 時頻率上限僅 50–60 Hz。
 
-**缺口**：兩份來源都未測過「MCU 獨立控制、PC 完全不在控制迴圈內」的組態。因此規劃 A/B/C 三組對照（timer 預設 / timer 調最低 / STM32 獨立），W14–16 的移植階段同時是在補這個對照組。
+**實測否證了這兩個前提（2026/11/19，組裝前出廠快照）**：
+
+- **`0x07` 不是 250。** 本套件 12 顆全新馬達出廠即為 **0**，與規格書不符（F-36）。500 µs × 6 的推算對泛用 STS3215 成立，對本套件不成立
+- **轉接板不是 FTDI。** 實際晶片為 WCH CH343P，無 echo，單顆 READ 往返時間中位數 0.34–0.63 ms、p95 ≤ 0.96 ms（F-37）。62 bytes 門檻與 16 ms latency timer 皆不適用
+
+推算在它自己的前提下是正確的，被推翻的是前提。落差本身也有解釋：規格書寫 250、飛特官方除錯軟體 FD 把該位址標為 Reserved、LeRobot 當它存在並主動寫 0——三方說法不一致（F-45）。
+
+**因此瓶頸位置仍未知。** 文獻指出的兩段都不在本硬體上，W13 改為直接量控制迴圈本身：Python 迴圈開銷、USB 排程，還是 rustypot 那層。11/24 的 688 秒連續遙控已觀察到單筆 73.49 ms 的長尾（F-59），成因待定。
+
+**缺口**：三份來源都未測過「MCU 獨立控制、PC 完全不在控制迴圈內」的組態。原規劃以 W14–16 的 STM32 移植同時補上這個對照組，但 STM32 已移出本學期範圍（C-08），對照組改於下學期補。latency timer 的 A/B 對照另需一塊 FTDI 轉接板當對照組。
 
 ## Architecture (planned)
 
@@ -185,7 +194,7 @@ snapshots/    真機暫存器快照與截圖
 **遙操作系統**
 
 - P. F. Hokayem and M. W. Spong, "Bilateral teleoperation: An historical survey," *Automatica*, 2006. [[DOI]](https://doi.org/10.1016/j.automatica.2006.06.027)
-- T. Z. Zhao, V. Kumar, S. Levine, and C. Finn, "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware," in *Robotics: Science and Systems (RSS)*, 2023. [[arXiv]](https://arxiv.org/abs/2304.13705)
+- T. Z. Zhao, V. Kumar, S. Levine, and C. Finn, "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware" (ALOHA), in *Robotics: Science and Systems (RSS)*, 2023. [[arXiv]](https://arxiv.org/abs/2304.13705)
 - P. Wu, Y. Shentu, Z. Yi, X. Lin, and P. Abbeel, "GELLO: A General, Low-Cost, and Intuitive Teleoperation Framework for Robot Manipulators," arXiv:2309.13037, 2023. [[arXiv]](https://arxiv.org/abs/2309.13037)
 - F. P. Audonnet, J. Grizou, A. Hamilton, and G. Aragon-Camarasa, "TELESIM: A Modular and Plug-and-Play Framework for Robotic Arm Teleoperation using a Digital Twin," arXiv:2309.10579, 2023. [[arXiv]](https://arxiv.org/abs/2309.10579)
 
