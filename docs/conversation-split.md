@@ -1,8 +1,8 @@
 # AI 協作的對話分工
 
-**版本**：v1.3
+**版本**：v1.4
 **日期**：2026/11/27
-**相關**：C-13（程式碼由 AI 撰寫、本人理解與決策）、C-30（`main` 被遺忘）、C-32（工具未進版控）、C-42（防護規則隨改名過期）
+**相關**：C-13（程式碼由 AI 撰寫、本人理解與決策）、C-30（`main` 被遺忘）、C-32（工具未進版控）、C-44（防護規則隨改名過期且靜默通過）
 
 本文件規定多個 AI 對話並行時的範圍、檔案擁有權與防撞規則，並附可直接複製的交接訊息。
 
@@ -26,13 +26,26 @@
 
 | 對話 | 範圍 | 擁有的檔案 | 壽命 |
 |---|---|---|---|
-| **統籌** | 時程、決策、F/V/C 編號、lab log、git、meeting、題目範圍 | `schedule.md`、`lab-log/*`、`open-questions.md`、`interface-spec*`、`system-comm.md`、`ppt/*`、本文件 | 整學期 |
+| **統籌** | 時程、決策、F/V/C 編號、lab log、git、meeting、題目範圍 | `schedule.md`、`lab-log/*`、`open-questions.md`、`interface-spec*`、`system-comm.md`、`ppt/*`、本文件，以及下方的「跨對話參考文件」 | 整學期 |
 | **Python 控制系統** | 五步實作、學習筆記、除錯 | `pyctrl/*`、`docs/learning/python-*.md` | 到系統完成 |
-| **真機場次** | 組裝、snapshot、calibrate、teleoperate、量測 | `snapshots/*`、`tools/*`、量測資料 | 到真機工作結束 |
-| **C 驅動 / 模擬器** | 驅動與模擬器程式 | `src/`、`sim/`、`include/`、`tests/`、`week06-08-plan.md` | 本學期多半休眠，下學期復活 |
+| **真機場次** | 組裝、snapshot、calibrate、teleoperate、量測 | `snapshots/*`、`tools/*`、`assembly-checklist.md`、量測資料 | 到真機工作結束 |
+| **C 驅動 / 模擬器** | 驅動與模擬器程式 | `src/`、`sim/`、`include/`、`tests/`、`week06-08-plan.md`、`Makefile` | 本學期多半休眠，下學期復活 |
 | （選用）**STM32 side project** | 自主學習與實作 | 另立 repo 或 `stm32/` | 不計入專題交付 |
 
 程式碼撰寫另由本機的 Claude Code 執行（C-13）。
+
+**跨對話參考文件一律由統籌維護。** 這幾份三個對話都會讀，但沒有人負責讓它們保持正確：
+
+`LeRobot-notes.md`、`protocol-notes.md`、`sim-spec.md`、`memory-table-check.md`、
+`architecture.md`、`verification-list.md`、`dev-setup.md`、`factory-registers.md`（待建）
+
+其他對話發現新事實時用純文字交回，由統籌寫入並**標明觀察版本**。理由是 2026/11/27
+發現的實例：`LeRobot-notes.md` 第 1、2、8 節還寫著 LeRobot 不檢查 error byte、
+呼叫鏈走 scservo_sdk，兩者都已被 F-30、F-31 推翻，但文件裡沒有任何標註。
+這是維護責任沒有歸屬造成的，不是誰寫錯——跟 §3.1 說的「過期副本比沒有副本更糟」
+同一類問題。
+
+repo 層級的檔案（`CLAUDE.md`、`.gitignore`、`.gitattributes`、`README.md`）歸統籌。
 
 **檔案擁有權是重點，不是對話數量。** 同一份文件被兩個對話改就會丟更新——與 C-30（`main` 被遺忘）、C-32（工具存在但不在版控）同一類：東西有兩個來源就會分岔。
 
@@ -292,5 +305,9 @@ include 每個 header 確認 extern "C" 仍然有效。休眠一個學期之後�
 硬體現況、版本號、已完成項目會變動。**每次 meeting 後或有重大變更時，回頭更新 4.3 的硬體現況與各節的「已完成／尚未完成」**，否則新對話會以過期的狀態定位。
 
 **§3.2 的共通慣例若有調整，四份交接訊息裡的對應段落也要一起改**——交接訊息是實際被複製出去的東西，只改 §3.2 不會傳到其他對話。
+
+**新增文件時要同時決定擁有者並寫進 §2。** 擁有權表在 2026/11/27 之前漏列了八份
+文件，`LeRobot-notes.md` 因此沒人維護而過期；同一天 `assembly-checklist.md` 與
+`tools/verify.py` 也分別被非擁有者的對話寫入。漏列不會立刻出事，出事時是靜默的。
 
 本文件由統籌對話維護。
