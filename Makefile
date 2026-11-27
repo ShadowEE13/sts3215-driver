@@ -61,13 +61,29 @@ test: $(TESTS) $(DEMO)
 demo: $(DEMO)
 	./$(DEMO)
 
-# Protocol 層要能原封不動搬到 STM32，所以 src/ 裡（PC 端 HAL hal_win32.c 除外）不能出現：
+# Protocol 層要能原封不動搬到 STM32，所以 src/ 裡（PC 端 HAL 除外）不能出現：
 #   模擬器的 header、termios / unistd / windows.h 等平台 API、malloc
+#
+# 豁免清單抽成變數，並在檢查前確認它指向的檔案真的存在（C-44）。
+# 2026/11 的教訓：豁免檔名曾寫死為 hal_pc.c，檔案改名成 hal_win32.c 之後
+# filter-out 篩不掉任何東西，而 grep 樣式當時又漏了 windows.h，於是檢查照常
+# 執行、照常印出「✔ 分層檢查通過」，實際上什麼都沒擋到。失敗是靜默的。
+#
+# 對策不是「改名後記得回頭 grep 舊檔名」——那仍然靠紀律，而這條教訓本身就是
+# 「靠紀律的防護會靜默失效」。改成讓檢查證明自己的前提還成立：
+#   1. 豁免清單指向不存在的檔案就當場失敗（改名當下就爆，不會拖三個月）
+#   2. 通過訊息印出豁免了什麼，「✔ 通過」變成「✔ 通過（豁免：…）」，
+#      盲目通過因此變成看得見
+EXEMPT := src/hal_win32.c
+
 layers:
+	@for f in $(EXEMPT); do \
+	    test -f $$f || { echo "✖ 豁免清單指向不存在的檔案：$$f（改名後忘了更新？）"; exit 1; }; \
+	done
 	@if grep -nE '#include *"(servo_sim|hal_sim)\.h"|termios|unistd\.h|windows\.h|malloc' \
-	        $(filter-out src/hal_win32.c,$(SRC)) /dev/null; then \
+	        $(filter-out $(EXEMPT),$(SRC)) /dev/null; then \
 	    echo "✖ 分層違規（見上方）"; exit 1; \
-	else echo "✔ 分層檢查通過"; fi
+	else echo "✔ 分層檢查通過（豁免：$(EXEMPT)）"; fi
 
 # 加嚴檢查（W9 review 時手動跑的那幾項，寫成 target 以便重跑）
 #   1. 額外警告：有號/無號轉換、變數遮蔽、非標準語法。平常的 make test 不開，
