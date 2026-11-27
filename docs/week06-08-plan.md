@@ -210,19 +210,13 @@ A、B、C 以手冊為外部參照；D 只證明兩邊彼此同意。例如兩�
 
 ## 七、分工
 
-**11/04 調整**：程式碼全部交由 Claude Code（在本機 repo 中執行）撰寫；本人負責理解、設計決策與 commit；另一個 Claude 對話負責 review 與解釋。規則寫在 repo 根目錄的 `CLAUDE.md`。之後有時間再自行重寫核心部分（優先：收包狀態機）。
+**11/04 調整（C-13）**：程式碼改由 AI 撰寫，本人負責理解、設計決策、review 與 commit；每一步都要能在 meeting 上逐行解釋。之後有時間再自行重寫核心部分（優先：收包狀態機）。
 
-| 角色 | 負責 |
-|---|---|
-| Claude Code（本機） | 所有程式碼與測試，一次一個步驟 |
-| 本人 | 理解每一步、必要決策、commit / push、meeting 報告 |
-| Claude 對話 | 每步 review、解釋、確認理解的問題、決策紀錄 |
-
-**每步流程**：Claude Code 完成一步 → `make test` + `make layers` 通過 → 本人 review 並 commit（`step N: ...`）→ 回到 Claude 對話 review 與解釋 → 下一步。
+**每步流程**：完成一步 → `make test` + `make layers` 通過 → 本人 review 並 commit → 下一步。
 
 **同源風險升高**：模擬器與驅動現在出自同一個模型，原本「不同作者」的保險消失。因此驗收 A/B/C 成為唯一的外部防線，不可省略；`sim/` 與 `src/` 不共用任何程式碼，驗收封包一律逐 byte 照抄手冊範例。此外已補上三道額外防線：反向驗證（故意寫錯確認測試抓得到）、Python 獨立重寫對照、原廠記憶體表逐址核對（已因此抓出 F-15）。
 
-**HAL 設計決策（11/04 定案）**：函式表與實例分開（`hal_ops_t` 為 `const` 函式表，`sts_hal_t` = `ops` + `ctx`）；`write`/`read` 回傳 `int`、長度用 `size_t`。完整理由見 `CLAUDE.md`。
+**HAL 設計決策（11/04 定案）**：函式表與實例分開（`hal_ops_t` 為 `const` 函式表，`sts_hal_t` = `ops` + `ctx`）；`write`/`read` 回傳 `int`、長度用 `size_t`。完整理由見 `conventions.md` §4。
 
 ---
 
