@@ -82,7 +82,7 @@ from pathlib import Path
 
 import numpy as np
 
-SCRIPT_VERSION = "1.0 (2026-11-27：W13 定量實驗)"
+SCRIPT_VERSION = "1.1 (2026-11-28：修正 LeRobot 0.6.2 的 import 路徑，新增 --read-retries)"
 
 COLUMNS = [
     "tick",
@@ -106,8 +106,12 @@ CONDITIONS = {
 # ---------------------------------------------------------------------------
 # 裝置介面
 #
-# 這一段是唯一與 LeRobot 耦合的地方，三個方法名稱請對照你的 LeRobot 版本
-# （ba83e4cf）確認。其餘程式完全不依賴 LeRobot。
+# 這一段是唯一與 LeRobot 耦合的地方。其餘程式完全不依賴 LeRobot。
+#
+# 2026-11-28 以 tools/probe_lerobot.py 對照本機的 LeRobot 0.6.2（ba83e4cf）核過：
+# 模組路徑已由 so101_follower / so101_leader 改名為 so_follower / so_leader，
+# 類別名稱不變（SO101Follower 等在新模組裡以別名保留，實際指向泛用的 SOFollower
+# 系列）。方法名稱、self.bus、Config 的 port / id 欄位均無變動。
 # ---------------------------------------------------------------------------
 
 
@@ -115,18 +119,23 @@ class LeRobotDevices:
     """包住 LeRobot 的 follower / leader，只暴露四個動作。"""
 
     def __init__(self, follower_port: str, leader_port: str,
-                 follower_id: str, leader_id: str) -> None:
-        # ↓↓↓ 要確認的部分：模組路徑與類別名稱因 LeRobot 版本而異 ↓↓↓
-        from lerobot.robots.so101_follower import SO101Follower, SO101FollowerConfig
-        from lerobot.teleoperators.so101_leader import SO101Leader, SO101LeaderConfig
+                 follower_id: str, leader_id: str,
+                 read_retries: int = 2) -> None:
+        # 模組路徑隨 LeRobot 版本變動，改版後先跑 tools/probe_lerobot.py 再進實驗室
+        from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
+        from lerobot.teleoperators.so_leader import SO101Leader, SO101LeaderConfig
 
+        # num_read_retries 是本次實驗的自變數，見 C-45。預設 2 是 LeRobot 的值：
+        # sync_read 失敗時 rustypot 會重送，而逾時是 50 ms（SerialMotorsBus
+        # default_timeout），正好是 F-59 那筆 73.49 ms 長尾唯一同量級的機制。
         self.follower = SO101Follower(
-            SO101FollowerConfig(port=follower_port, id=follower_id)
+            SO101FollowerConfig(port=follower_port, id=follower_id,
+                                num_read_retries=read_retries)
         )
         self.leader = SO101Leader(
-            SO101LeaderConfig(port=leader_port, id=leader_id)
+            SO101LeaderConfig(port=leader_port, id=leader_id,
+                              num_read_retries=read_retries)
         )
-        # ↑↑↑ 要確認的部分 ↑↑↑
 
         self.follower.connect()
         self.leader.connect()
@@ -342,6 +351,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--temp-every", type=float, default=10.0, help="每幾秒讀一次溫度，0 = 不讀")
     ap.add_argument("--follower-id", default="my_follower")
     ap.add_argument("--leader-id", default="my_leader")
+    ap.add_argument("--read-retries", type=int, default=2,
+                    help="sync_read 失敗時的額外重試次數（LeRobot 預設 2）。"
+                         "設 0 可判定 F-59 長尾是否為重試造成，見 C-45")
     ap.add_argument("--note", default="", help="自由備註，例如『夾持 200 g、室溫 24 度』")
     ap.add_argument("--out", default=None, help="輸出資料夾，預設 repo 的 snapshots/cadence/")
     args = ap.parse_args(argv)
@@ -352,7 +364,8 @@ def main(argv: list[str] | None = None) -> int:
         if not args.leader_port:
             ap.error("真機模式需要 --leader-port")
         devices = LeRobotDevices(
-            args.port, args.leader_port, args.follower_id, args.leader_id
+            args.port, args.leader_port, args.follower_id, args.leader_id,
+            read_retries=args.read_retries,
         )
 
     started = _dt.datetime.now().astimezone()
@@ -394,6 +407,7 @@ def main(argv: list[str] | None = None) -> int:
         "target_hz": args.hz,
         "target_seconds": args.seconds,
         "temp_every_s": args.temp_every,
+        "read_retries": args.read_retries,
         "ports": {"follower": args.port, "leader": args.leader_port},
         "ids": {"follower": args.follower_id, "leader": args.leader_id},
         "fake": args.port == "fake",
