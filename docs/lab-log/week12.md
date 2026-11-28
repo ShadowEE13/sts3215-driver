@@ -172,7 +172,46 @@ LeRobot 斷線 → 扭矩關閉、Lock = 0
 
 散點圖分上下兩個面板是刻意的：上面板 `work_ns`、下面板 `steal = 週期間隔 − work − sleep`。尖峰的規律程度用算的而不是用看的——找出超過中位數 5 倍的點，量間隔的變異係數，CV < 0.2 指向 OS／USB 的固定排程，CV > 0.8 指向驅動層重試。
 
-**尚未確認**：`cadence.py` 中 LeRobot 的 import 路徑與類別名稱還沒對照 `ba83e4cf` 核過，已在程式中標出。fake 模式不受影響。
+**`tools/probe_lerobot.py`**（11/28）——不連硬體，只用 import 與 introspection 對照
+`cadence.py` 對 LeRobot 的七個假設。目的是讓它在家壞掉而不是在實驗室壞掉：場次時間是
+這個專題最貴的資源，而 `cadence.py` 的耦合段寫的時候標了「要確認」卻一直沒核過。
+
+結果：**七個假設只有兩條 import 路徑是錯的**，方法名稱、`self.bus`、Config 的 `port` /
+`id` 欄位全部無誤（F-64）。但順著 LeRobot 原始碼讀下去撈到的東西比修 import 值錢得多，
+見 §4.1。
+
+探針自己也有一個 bug 值得記：搜尋替代路徑時，篩選條件寫成「模組名含 so101」，而 0.6.2
+正好把模組改名成 `so_follower`，於是搜尋跳過了正確答案，回報「整個 lerobot 裡都找不到」。
+**比不回報更糟，因為它看起來像個結論。** 搜尋的篩選條件必須比它要找的東西寬，否則找不到
+的時候分不出是真的沒有、還是被自己篩掉了。已改為掃 `lerobot.robots.*` 與
+`lerobot.teleoperators.*` 全部。
+
+### 4.1 讀 LeRobot 原始碼撈到的三件事
+
+**F-64　模組改名，類別名以別名保留。** LeRobot 0.6.2 把 SO101 專屬模組泛化：
+`lerobot.robots.so101_follower` → `lerobot.robots.so_follower`、
+`lerobot.teleoperators.so101_leader` → `lerobot.teleoperators.so_leader`。
+`SO101FollowerConfig` 實際上是 `SOFollowerRobotConfig` 的別名，`SO101Follower` 是
+`SOFollower` 系列。`import` 路徑壞掉但類別名還在，所以錯誤訊息是 `ModuleNotFoundError`
+而不是 `ImportError`。
+
+**F-65　找到 F-59 長尾的頭號嫌犯。** follower 與 leader 的 Config 都有
+`num_read_retries: int = 2`，註解寫著「Feetech buses can occasionally return a corrupted
+status packet, **especially when several joints move at once**, which otherwise aborts
+the teleoperation loop」。重試發生在 rustypot 內部（`sync_read_register_with_error(...,
+retries=n)`），而 `SerialMotorsBus.default_timeout = 50`（毫秒）。
+
+兩件事對得上：73.49 ms 那筆長尾出現在 `teleop` 段，也就是**手正在動 leader** 的時候，
+正是註解說的情境；而 50 ms 是整個迴圈裡唯一與 73 ms 同量級的機制——其餘各段都在 1 ms
+上下。這還不是證明（50 + 1.1 ≈ 51，不等於 73.49，差了約 22 ms 待解釋），但它把 W13
+從「量了再看」變成**有具名假設可以否證的對照實驗**。
+
+**F-66　rustypot 的 sync_read 不保證同時快照。** `motors_bus.py` 的 docstring 明載：
+rustypot 對同一組（協定、暫存器位址與長度相同）的馬達送一次 Sync Read，但對 Feetech SCS
+是「reads the motors of a servo without Sync Read, one after the other」，回傳值因此不是
+同一瞬間的快照。STS3215 走哪一條路徑未定（V-33）——若是逐顆讀，六軸的「一次 SYNC READ」
+就不成立，W13 的時序解釋要跟著改。
+
 
 ---
 
@@ -203,7 +242,6 @@ Control Table 寫的，沒照那句話寫，所以錯誤沒有擴散，純屬運
 - **`snapshots/` 說明補 F-55**：11/24 的 leader 快照是 calibrate 後未斷電，follower 是斷電重開後，兩份不可直接對比
 - **`architecture.md` §8 之後補 F-61**。現在寫的是 F-31 的版本（正確但較弱），F-61 更有力。等 W13 實驗做完一起補
 - **`verify.py` 在本機實跑一次**。MSYS2 bash 看不到 Python，下次開 Miniforge Prompt 時順手確認
-- **確認 `cadence.py` 的 LeRobot import**
 - `avg_max_reward` 與 `n_obs_steps`（F-25 待核對）**降級為下學期**：只有用到 diffusion policy 時才有意義，W13 前不花時間。`week06.md` 的「待補」要改成「下學期用到 policy 時再補」，否則三個月後分不出是忘了做還是決定不做
 
 ---
@@ -218,5 +256,9 @@ Control Table 寫的，沒照那句話寫，所以錯誤沒有擴散，純屬運
 **C-42**　C 驅動硬性規範的適用範圍
 **C-43**　維持 Windows，理由更換
 **C-44**　防護規則不得依賴記憶
+**F-64 ～ F-66**　LeRobot 0.6.2 原始碼核對（§4.1）
+**C-45**　W13 新增重試對照組
 
-V 編號本週未新增。V-08、V-10、V-13、V-29、V-30 的狀態已更新，見 `verification-list.md`。
+**V-33**　STS3215 在 rustypot 下是真 SYNC READ 還是逐顆讀（F-66）
+
+V-08、V-10、V-13、V-29、V-30 的狀態已更新，見 `verification-list.md`。
